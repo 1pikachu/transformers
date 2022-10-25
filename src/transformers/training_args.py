@@ -534,7 +534,7 @@ class TrainingArguments:
     channels_last: bool = field(
         default=False, metadata={"help": "NHWC model and input"}
     )
-    oob_device: str = field(
+    device: str = field(
         default="cpu",
         metadata={"help": "cpu, cuda, xpu"}
     )
@@ -1142,7 +1142,7 @@ class TrainingArguments:
         if (
             self.framework == "pt"
             and is_torch_available()
-            and (self.device.type != "cuda")
+            and (self.device != "cuda")
             and (get_xla_device_type(self.device) != "GPU")
             and (self.fp16 or self.fp16_full_eval)
         ):
@@ -1154,7 +1154,7 @@ class TrainingArguments:
         if (
             self.framework == "pt"
             and is_torch_available()
-            and (self.device.type != "cuda")
+            and (self.device != "cuda")
             and (get_xla_device_type(self.device) != "GPU")
             and (self.device.type != "cpu")
             and (self.bf16 or self.bf16_full_eval)
@@ -1496,13 +1496,13 @@ class TrainingArguments:
 
         return device
 
-    @property
-    @torch_required
-    def device(self) -> "torch.device":
-        """
-        The device used by this process.
-        """
-        return self._setup_devices
+    #@property
+    #@torch_required
+    #def device(self) -> "torch.device":
+    #    """
+    #    The device used by this process.
+    #    """
+    #    return self._setup_devices
 
     @property
     @torch_required
