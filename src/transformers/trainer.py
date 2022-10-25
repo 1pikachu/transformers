@@ -2809,7 +2809,7 @@ class Trainer:
             )
         )
 
-        self.log(output.metrics)
+        # self.log(output.metrics)
 
         if DebugOption.TPU_METRICS_DEBUG in self.args.debug:
             # tpu-comment: Logging debug metrics for PyTorch/XLA (compile, execute times, ops, etc.)
@@ -2910,6 +2910,8 @@ class Trainer:
             self.model_wrapped = deepspeed_engine
             self.deepspeed = deepspeed_engine
 
+        # use jit
+        self.args.jit_mode_eval = self.args.jit
         model = self._wrap_model(self.model, training=False, dataloader=dataloader)
 
         # if full fp16 or bf16 eval is wanted and this ``evaluation`` or ``predict`` isn't called
@@ -2930,6 +2932,19 @@ class Trainer:
         logger.info(f"  Batch size = {batch_size}")
 
         model.eval()
+        model = model.to(self.args.device)
+        if self.args.channels_last:
+            try:
+                model = model.to(memory_format=torch.channels_last)
+                print("---- Use NHWC model")
+            except:
+                print("---- Use normal model")
+        if self.args.nv_fuser:
+            print("---- Use trace model.")
+            fuser_mode = "fuser2"
+        else:
+            fuser_mode = "none"
+
 
         self.callback_handler.eval_dataloader = dataloader
         # Do this before wrapping.
@@ -2956,8 +2971,12 @@ class Trainer:
         # Will be useful when we have an iterable dataset so don't know its length.
 
         observed_num_examples = 0
+        total_time = 0.0
+        total_data = 0
         # Main evaluation loop
         for step, inputs in enumerate(dataloader):
+            if self.args.num_iters > 0 and step >= self.args.num_iters:
+                break
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:
@@ -2967,8 +2986,16 @@ class Trainer:
                     batch_size = observed_batch_size
 
             # Prediction step
+            tic = time.time()
             loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+            toc = time.time()
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+
+            print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+            if step >= self.args.num_warmup:
+                total_time += toc - tic
+                total_data += batch_size
+
 
             if is_torch_tpu_available():
                 xm.mark_step()
@@ -3020,6 +3047,10 @@ class Trainer:
 
                 # Set back to None to begin a new accumulation
                 losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+
+        print("inference Latency: {} ms".format(total_time /total_data))
+        print("inference Throughput: {} samples/s".format(total_data / total_time))
+        print("Device: {}".format(self.args.device))
 
         if args.past_index and hasattr(self, "_past"):
             # Clean the state at the end of the evaluation loop

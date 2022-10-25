@@ -500,6 +500,7 @@ class TrainingArguments:
     """
 
     framework = "pt"
+
     output_dir: str = field(
         metadata={"help": "The output directory where the model predictions and checkpoints will be written."},
     )
@@ -511,6 +512,31 @@ class TrainingArguments:
                 "Use this to continue training if output_dir points to a checkpoint directory."
             )
         },
+    )
+    # OOB
+    num_warmup: int = field(
+        default=0,
+        metadata={"help": "If >=0, uses the corresponding iteration steps."},
+    )
+    num_iters: int = field(
+        default=0,
+        metadata={"help": "If >=0, uses the corresponding iteration steps."},
+    )
+    profile: bool = field(
+        default=False, metadata={"help": "Collect timeline."}
+    )
+    jit: bool = field(default=False, metadata={"help": "use torch jit"})
+    nv_fuser: bool = field(default=False, metadata={"help": "use nv fuser"})
+    precision: str = field(
+        default="",
+        metadata={"help": "To use (mixed) precision"},
+    )
+    channels_last: bool = field(
+        default=False, metadata={"help": "NHWC model and input"}
+    )
+    oob_device: str = field(
+        default="cpu",
+        metadata={"help": "cpu, cuda, xpu"}
     )
 
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
@@ -995,6 +1021,7 @@ class TrainingArguments:
             "help": "Overrides the default timeout for distributed training (value should be given in seconds)."
         },
     )
+
 
     def __post_init__(self):
         # Handle --use_env option in torch.distributed.launch (local_rank not passed as an arg then).
