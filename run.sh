@@ -1,4 +1,5 @@
 pip install evaluate
+pip uninstall transformers
 python setup.py develop
 
 
