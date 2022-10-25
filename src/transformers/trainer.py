@@ -310,6 +310,7 @@ class Trainer:
             logger.info(f"No `TrainingArguments` passed, using `output_dir={output_dir}`.")
             args = TrainingArguments(output_dir=output_dir)
         self.args = args
+        self.args.device = args.device
         # Seed must be set before instantiating the model when using model
         enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
         self.hp_name = None
@@ -2788,16 +2789,75 @@ class Trainer:
         eval_dataloader = self.get_eval_dataloader(eval_dataset)
         start_time = time.time()
 
-        eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
-        output = eval_loop(
-            eval_dataloader,
-            description="Evaluation",
-            # No point gathering the predictions if there are no metrics, otherwise we defer to
-            # self.args.prediction_loss_only
-            prediction_loss_only=True if self.compute_metrics is None else None,
-            ignore_keys=ignore_keys,
-            metric_key_prefix=metric_key_prefix,
-        )
+        #eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
+        eval_loop = self.evaluation_loop
+
+        if self.args.device == "xpu":
+            import intel_extension_for_pytorch
+        elif self.args.device == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = False
+
+        args = self.args
+        with torch.inference_mode():
+            if args.precision == "float16" and args.device == "cuda":
+                print("---- Use autocast fp16 cuda")
+                with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
+                    output = eval_loop(
+                        eval_dataloader,
+                        description="Evaluation",
+                        # No point gathering the predictions if there are no metrics, otherwise we defer to
+                        # self.args.prediction_loss_only
+                        prediction_loss_only=True if self.compute_metrics is None else None,
+                        ignore_keys=ignore_keys,
+                        metric_key_prefix=metric_key_prefix,
+                    )
+            elif args.precision == "float16" and args.device == "xpu":
+                print("---- Use autocast fp16 xpu")
+                with torch.xpu.amp.autocast(enabled=True, dtype=torch.float16, cache_enabled=True):
+                    output = eval_loop(
+                        eval_dataloader,
+                        description="Evaluation",
+                        # No point gathering the predictions if there are no metrics, otherwise we defer to
+                        # self.args.prediction_loss_only
+                        prediction_loss_only=True if self.compute_metrics is None else None,
+                        ignore_keys=ignore_keys,
+                        metric_key_prefix=metric_key_prefix,
+                    )
+            elif args.precision == "bfloat16" and args.device == "cpu":
+                print("---- Use autocast bf16 cpu")
+                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
+                    output = eval_loop(
+                        eval_dataloader,
+                        description="Evaluation",
+                        # No point gathering the predictions if there are no metrics, otherwise we defer to
+                        # self.args.prediction_loss_only
+                        prediction_loss_only=True if self.compute_metrics is None else None,
+                        ignore_keys=ignore_keys,
+                        metric_key_prefix=metric_key_prefix,
+                    )
+            elif args.precision == "bfloat16" and args.device == "xpu":
+                print("---- Use autocast bf16 xpu")
+                with torch.xpu.amp.autocast(dtype=torch.bfloat16):
+                    output = eval_loop(
+                        eval_dataloader,
+                        description="Evaluation",
+                        # No point gathering the predictions if there are no metrics, otherwise we defer to
+                        # self.args.prediction_loss_only
+                        prediction_loss_only=True if self.compute_metrics is None else None,
+                        ignore_keys=ignore_keys,
+                        metric_key_prefix=metric_key_prefix,
+                    )
+            else:
+                print("---- no autocast")
+                output = eval_loop(
+                    eval_dataloader,
+                    description="Evaluation",
+                    # No point gathering the predictions if there are no metrics, otherwise we defer to
+                    # self.args.prediction_loss_only
+                    prediction_loss_only=True if self.compute_metrics is None else None,
+                    ignore_keys=ignore_keys,
+                    metric_key_prefix=metric_key_prefix,
+                )
 
         total_batch_size = self.args.eval_batch_size * self.args.world_size
         output.metrics.update(
@@ -2880,6 +2940,20 @@ class Trainer:
         self._memory_tracker.stop_and_update_metrics(output.metrics)
 
         return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
+
+    def trace_handler(self, p):
+        output = p.key_averages().table(sort_by="self_cpu_time_total")
+        print(output)
+        import pathlib
+        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+        if not os.path.exists(timeline_dir):
+            try:
+                os.makedirs(timeline_dir)
+            except:
+                pass
+        timeline_file = timeline_dir + 'timeline-' + str(torch.backends.quantized.engine) + \
+                '-' + str(p.step_num) + '-' + str(os.getpid()) + '.json'
+        p.export_chrome_trace(timeline_file)
 
     def evaluation_loop(
         self,
@@ -2973,80 +3047,425 @@ class Trainer:
         observed_num_examples = 0
         total_time = 0.0
         total_data = 0
+        profile_len = min(len(dataloader), args.num_iters + args.num_warmup) // 2
         # Main evaluation loop
-        for step, inputs in enumerate(dataloader):
-            if self.args.num_iters > 0 and step >= self.args.num_iters:
-                break
-            # Update the observed num examples
-            observed_batch_size = find_batch_size(inputs)
-            if observed_batch_size is not None:
-                observed_num_examples += observed_batch_size
-                # For batch samplers, batch_size is not known by the dataloader in advance.
-                if batch_size is None:
-                    batch_size = observed_batch_size
+        if args.profile and args.device == "xpu":
+            for step, inputs in enumerate(dataloader):
+                if self.args.num_iters > 0 and step >= self.args.num_iters:
+                    break
+                inputs = {i : inputs[i].to(args.device) 
+                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                # Update the observed num examples
+                observed_batch_size = find_batch_size(inputs)
+                if observed_batch_size is not None:
+                    observed_num_examples += observed_batch_size
+                    # For batch samplers, batch_size is not known by the dataloader in advance.
+                    if batch_size is None:
+                        batch_size = observed_batch_size
 
-            # Prediction step
-            tic = time.time()
-            loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-            toc = time.time()
-            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+                # Prediction step
+                with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
+                    tic = time.time()
+                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                    torch.xpu.synchronize()
+                    toc = time.time()
+                inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
-            print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-            if step >= self.args.num_warmup:
-                total_time += toc - tic
-                total_data += batch_size
+                print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+                if step >= self.args.num_warmup:
+                    total_time += toc - tic
+                    total_data += batch_size
+                if args.profile and i == profile_len:
+                    import pathlib
+                    timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+                    if not os.path.exists(timeline_dir):
+                        try:
+                            os.makedirs(timeline_dir)
+                        except:
+                            pass
+                    torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
+                        timeline_dir+'profile.pt')
+                    torch.save(prof.key_averages(group_by_input_shape=True).table(),
+                        timeline_dir+'profile_detail.pt')
 
+                if is_torch_tpu_available():
+                    xm.mark_step()
 
-            if is_torch_tpu_available():
-                xm.mark_step()
-
-            # Update containers on host
-            if loss is not None:
-                losses = self._nested_gather(loss.repeat(batch_size))
-                losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
-            if labels is not None:
-                labels = self._pad_across_processes(labels)
-                labels = self._nested_gather(labels)
-                labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
-            if inputs_decode is not None:
-                inputs_decode = self._pad_across_processes(inputs_decode)
-                inputs_decode = self._nested_gather(inputs_decode)
-                inputs_host = (
-                    inputs_decode
-                    if inputs_host is None
-                    else nested_concat(inputs_host, inputs_decode, padding_index=-100)
-                )
-            if logits is not None:
-                logits = self._pad_across_processes(logits)
-                logits = self._nested_gather(logits)
-                if self.preprocess_logits_for_metrics is not None:
-                    logits = self.preprocess_logits_for_metrics(logits, labels)
-                preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
-            self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
-
-            # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-            if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
-                if losses_host is not None:
-                    losses = nested_numpify(losses_host)
-                    all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
-                if preds_host is not None:
-                    logits = nested_numpify(preds_host)
-                    all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-                if inputs_host is not None:
-                    inputs_decode = nested_numpify(inputs_host)
-                    all_inputs = (
+                # Update containers on host
+                if loss is not None:
+                    losses = self._nested_gather(loss.repeat(batch_size))
+                    losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                if labels is not None:
+                    labels = self._pad_across_processes(labels)
+                    labels = self._nested_gather(labels)
+                    labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
+                if inputs_decode is not None:
+                    inputs_decode = self._pad_across_processes(inputs_decode)
+                    inputs_decode = self._nested_gather(inputs_decode)
+                    inputs_host = (
                         inputs_decode
-                        if all_inputs is None
-                        else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                        if inputs_host is None
+                        else nested_concat(inputs_host, inputs_decode, padding_index=-100)
                     )
-                if labels_host is not None:
-                    labels = nested_numpify(labels_host)
-                    all_labels = (
-                        labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
-                    )
+                if logits is not None:
+                    logits = self._pad_across_processes(logits)
+                    logits = self._nested_gather(logits)
+                    if self.preprocess_logits_for_metrics is not None:
+                        logits = self.preprocess_logits_for_metrics(logits, labels)
+                    preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+                self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
-                # Set back to None to begin a new accumulation
-                losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+                # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+                if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                    if losses_host is not None:
+                        losses = nested_numpify(losses_host)
+                        all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+                    if preds_host is not None:
+                        logits = nested_numpify(preds_host)
+                        all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+                    if inputs_host is not None:
+                        inputs_decode = nested_numpify(inputs_host)
+                        all_inputs = (
+                            inputs_decode
+                            if all_inputs is None
+                            else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                        )
+                    if labels_host is not None:
+                        labels = nested_numpify(labels_host)
+                        all_labels = (
+                            labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+                        )
+
+                    # Set back to None to begin a new accumulation
+                    losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+        elif args.profile and args.device == "cuda":
+            with torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
+                record_shapes=True,
+                schedule=torch.profiler.schedule(
+                    wait=profile_len,
+                    warmup=2,
+                    active=1,
+                ),
+                on_trace_ready=self.trace_handler,
+            ) as p:
+                for step, inputs in enumerate(dataloader):
+                    if self.args.num_iters > 0 and step >= self.args.num_iters:
+                        break
+                    inputs = {i : inputs[i].to(args.device) 
+                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                    # Update the observed num examples
+                    observed_batch_size = find_batch_size(inputs)
+                    if observed_batch_size is not None:
+                        observed_num_examples += observed_batch_size
+                        # For batch samplers, batch_size is not known by the dataloader in advance.
+                        if batch_size is None:
+                            batch_size = observed_batch_size
+
+                    # Prediction step
+                    tic = time.time()
+                    with torch.jit.fuser(fuser_mode):
+                        loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                    torch.cuda.synchronize()
+                    toc = time.time()
+                    p.step()
+                    inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+
+                    print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+                    if step >= self.args.num_warmup:
+                        total_time += toc - tic
+                        total_data += batch_size
+
+                    if is_torch_tpu_available():
+                        xm.mark_step()
+
+                    # Update containers on host
+                    if loss is not None:
+                        losses = self._nested_gather(loss.repeat(batch_size))
+                        losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                    if labels is not None:
+                        labels = self._pad_across_processes(labels)
+                        labels = self._nested_gather(labels)
+                        labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
+                    if inputs_decode is not None:
+                        inputs_decode = self._pad_across_processes(inputs_decode)
+                        inputs_decode = self._nested_gather(inputs_decode)
+                        inputs_host = (
+                            inputs_decode
+                            if inputs_host is None
+                            else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                        )
+                    if logits is not None:
+                        logits = self._pad_across_processes(logits)
+                        logits = self._nested_gather(logits)
+                        if self.preprocess_logits_for_metrics is not None:
+                            logits = self.preprocess_logits_for_metrics(logits, labels)
+                        preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+                    self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
+
+                    # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+                    if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                        if losses_host is not None:
+                            losses = nested_numpify(losses_host)
+                            all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+                        if preds_host is not None:
+                            logits = nested_numpify(preds_host)
+                            all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+                        if inputs_host is not None:
+                            inputs_decode = nested_numpify(inputs_host)
+                            all_inputs = (
+                                inputs_decode
+                                if all_inputs is None
+                                else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                            )
+                        if labels_host is not None:
+                            labels = nested_numpify(labels_host)
+                            all_labels = (
+                                labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+                            )
+
+                        # Set back to None to begin a new accumulation
+                        losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+        elif args.profile and args.device == "cpu":
+            with torch.profiler.profile(
+                activities=[torch.profiler.ProfilerActivity.CPU],
+                record_shapes=True,
+                schedule=torch.profiler.schedule(
+                    wait=profile_len,
+                    warmup=2,
+                    active=1,
+                ),
+                on_trace_ready=self.trace_handler,
+            ) as p:
+                for step, inputs in enumerate(dataloader):
+                    if self.args.num_iters > 0 and step >= self.args.num_iters:
+                        break
+                    inputs = {i : inputs[i].to(args.device) 
+                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                    # Update the observed num examples
+                    observed_batch_size = find_batch_size(inputs)
+                    if observed_batch_size is not None:
+                        observed_num_examples += observed_batch_size
+                        # For batch samplers, batch_size is not known by the dataloader in advance.
+                        if batch_size is None:
+                            batch_size = observed_batch_size
+
+                    # Prediction step
+                    tic = time.time()
+                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                    toc = time.time()
+                    p.step()
+                    inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+
+                    print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+                    if step >= self.args.num_warmup:
+                        total_time += toc - tic
+                        total_data += batch_size
+
+                    if is_torch_tpu_available():
+                        xm.mark_step()
+
+                    # Update containers on host
+                    if loss is not None:
+                        losses = self._nested_gather(loss.repeat(batch_size))
+                        losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                    if labels is not None:
+                        labels = self._pad_across_processes(labels)
+                        labels = self._nested_gather(labels)
+                        labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
+                    if inputs_decode is not None:
+                        inputs_decode = self._pad_across_processes(inputs_decode)
+                        inputs_decode = self._nested_gather(inputs_decode)
+                        inputs_host = (
+                            inputs_decode
+                            if inputs_host is None
+                            else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                        )
+                    if logits is not None:
+                        logits = self._pad_across_processes(logits)
+                        logits = self._nested_gather(logits)
+                        if self.preprocess_logits_for_metrics is not None:
+                            logits = self.preprocess_logits_for_metrics(logits, labels)
+                        preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+                    self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
+
+                    # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+                    if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                        if losses_host is not None:
+                            losses = nested_numpify(losses_host)
+                            all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+                        if preds_host is not None:
+                            logits = nested_numpify(preds_host)
+                            all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+                        if inputs_host is not None:
+                            inputs_decode = nested_numpify(inputs_host)
+                            all_inputs = (
+                                inputs_decode
+                                if all_inputs is None
+                                else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                            )
+                        if labels_host is not None:
+                            labels = nested_numpify(labels_host)
+                            all_labels = (
+                                labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+                            )
+
+                        # Set back to None to begin a new accumulation
+                        losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+        elif not args.profile and args.device == "cuda":
+            for step, inputs in enumerate(dataloader):
+                if self.args.num_iters > 0 and step >= self.args.num_iters:
+                    break
+                inputs = {i : inputs[i].to(args.device) 
+                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                # Update the observed num examples
+                observed_batch_size = find_batch_size(inputs)
+                if observed_batch_size is not None:
+                    observed_num_examples += observed_batch_size
+                    # For batch samplers, batch_size is not known by the dataloader in advance.
+                    if batch_size is None:
+                        batch_size = observed_batch_size
+
+                # Prediction step
+                tic = time.time()
+                with torch.jit.fuser(fuser_mode):
+                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                torch.cuda.synchronize()
+                toc = time.time()
+                inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+
+                print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+                if step >= self.args.num_warmup:
+                    total_time += toc - tic
+                    total_data += batch_size
+
+                if is_torch_tpu_available():
+                    xm.mark_step()
+
+                # Update containers on host
+                if loss is not None:
+                    losses = self._nested_gather(loss.repeat(batch_size))
+                    losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                if labels is not None:
+                    labels = self._pad_across_processes(labels)
+                    labels = self._nested_gather(labels)
+                    labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
+                if inputs_decode is not None:
+                    inputs_decode = self._pad_across_processes(inputs_decode)
+                    inputs_decode = self._nested_gather(inputs_decode)
+                    inputs_host = (
+                        inputs_decode
+                        if inputs_host is None
+                        else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                    )
+                if logits is not None:
+                    logits = self._pad_across_processes(logits)
+                    logits = self._nested_gather(logits)
+                    if self.preprocess_logits_for_metrics is not None:
+                        logits = self.preprocess_logits_for_metrics(logits, labels)
+                    preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+                self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
+
+                # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+                if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                    if losses_host is not None:
+                        losses = nested_numpify(losses_host)
+                        all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+                    if preds_host is not None:
+                        logits = nested_numpify(preds_host)
+                        all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+                    if inputs_host is not None:
+                        inputs_decode = nested_numpify(inputs_host)
+                        all_inputs = (
+                            inputs_decode
+                            if all_inputs is None
+                            else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                        )
+                    if labels_host is not None:
+                        labels = nested_numpify(labels_host)
+                        all_labels = (
+                            labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+                        )
+
+                    # Set back to None to begin a new accumulation
+                    losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+        else:
+            for step, inputs in enumerate(dataloader):
+                if self.args.num_iters > 0 and step >= self.args.num_iters:
+                    break
+                inputs = {i : inputs[i].to(args.device) 
+                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                # Update the observed num examples
+                observed_batch_size = find_batch_size(inputs)
+                if observed_batch_size is not None:
+                    observed_num_examples += observed_batch_size
+                    # For batch samplers, batch_size is not known by the dataloader in advance.
+                    if batch_size is None:
+                        batch_size = observed_batch_size
+
+                # Prediction step
+                tic = time.time()
+                loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                if args.device == "xpu":
+                    torch.xpu.synchronize()
+                toc = time.time()
+                inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+
+                print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+                if step >= self.args.num_warmup:
+                    total_time += toc - tic
+                    total_data += batch_size
+
+                if is_torch_tpu_available():
+                    xm.mark_step()
+
+                # Update containers on host
+                if loss is not None:
+                    losses = self._nested_gather(loss.repeat(batch_size))
+                    losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+                if labels is not None:
+                    labels = self._pad_across_processes(labels)
+                    labels = self._nested_gather(labels)
+                    labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
+                if inputs_decode is not None:
+                    inputs_decode = self._pad_across_processes(inputs_decode)
+                    inputs_decode = self._nested_gather(inputs_decode)
+                    inputs_host = (
+                        inputs_decode
+                        if inputs_host is None
+                        else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                    )
+                if logits is not None:
+                    logits = self._pad_across_processes(logits)
+                    logits = self._nested_gather(logits)
+                    if self.preprocess_logits_for_metrics is not None:
+                        logits = self.preprocess_logits_for_metrics(logits, labels)
+                    preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+                self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
+
+                # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+                if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                    if losses_host is not None:
+                        losses = nested_numpify(losses_host)
+                        all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+                    if preds_host is not None:
+                        logits = nested_numpify(preds_host)
+                        all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+                    if inputs_host is not None:
+                        inputs_decode = nested_numpify(inputs_host)
+                        all_inputs = (
+                            inputs_decode
+                            if all_inputs is None
+                            else nested_concat(all_inputs, inputs_decode, padding_index=-100)
+                        )
+                    if labels_host is not None:
+                        labels = nested_numpify(labels_host)
+                        all_labels = (
+                            labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+                        )
+
+                    # Set back to None to begin a new accumulation
+                    losses_host, preds_host, inputs_host, labels_host = None, None, None, None
 
         print("inference Latency: {} ms".format(total_time /total_data))
         print("inference Throughput: {} samples/s".format(total_data / total_time))
