@@ -183,6 +183,26 @@ class TFTrainingArguments(TrainingArguments):
     )
 
     xla: bool = field(default=False, metadata={"help": "Whether to activate the XLA compilation or not"})
+    # OOB
+    num_warmup: int = field(
+        default=1,
+        metadata={"help": "If >=0, uses the corresponding iteration steps."},
+    )
+    num_iter: int = field(
+        default=200,
+        metadata={"help": "If >=0, uses the corresponding iteration steps."},
+    )
+    profile: bool = field(
+        default=False, metadata={"help": "Collect timeline."}
+    )
+    precision: str = field(
+        default="",
+        metadata={"help": "To use (mixed) precision"},
+    )
+    epochs: int = field(
+        default=3,
+        metadata={"help": "inference epoch"},
+    )
 
     @cached_property
     @tf_required

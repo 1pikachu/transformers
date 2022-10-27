@@ -26,6 +26,7 @@ import json
 import logging
 import math
 import os
+import time
 import random
 import sys
 from dataclasses import dataclass, field
@@ -249,6 +250,20 @@ def main():
         logger.warning("We are training on TPU - forcing pad_to_max_length")
         data_args.pad_to_max_length = True
     # endregion
+
+    if training_args.precision == 'float16' :
+        from tensorflow.keras import mixed_precision
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_global_policy(policy)
+
+        from tensorflow.keras import layers
+        num_units = 64
+        dense1 = layers.Dense(num_units, activation='relu', name='dense_1')
+        print(dense1.dtype_policy)
+    if training_args.profile:
+        # timeline
+        import pathlib
+        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/' + str(os.getpid())
 
     # region Checkpoints
     # Detecting last checkpoint.
@@ -591,46 +606,68 @@ def main():
         logger.info(f"  Instantaneous batch size per device = {training_args.per_device_train_batch_size}")
         logger.info(f"  Total train batch size = {training_args.per_device_train_batch_size * num_replicas}")
 
+        print("## Evaluate Start:")
+        total_time = 0.0
+        total_sample = 0
+        num_iter = int(len(tf_train_dataset) / training_args.per_device_eval_batch_size)
+        num_iter = min(num_iter, training_args.num_iter)
+        for i in range(training_args.epochs):
+            if training_args.profile and i == (training_args.epochs // 2):
+                tf.profiler.experimental.start(timeline_dir)
+            start_time = time.time()
+            model.evaluate(tf_train_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
+            end_time = time.time()
+            print("duration: ", end_time - start_time)
+            if training_args.profile and i == (training_args.epochs // 2):
+                tf.profiler.experimental.stop()
+            if i >= training_args.num_warmup:
+                total_time += end_time - start_time
+                total_sample += num_iter * training_args.per_device_eval_batch_size
+        latency = total_time / total_sample * 1000
+        throughput = total_sample / total_time
+        print("### Latency:: {:.2f} ms".format(latency))
+        print("### Throughput: {:.3f} samples/s".format(throughput))
+
         # For long training runs, you may wish to use the PushToHub() callback here to save intermediate checkpoints
         # to the Hugging Face Hub rather than just pushing the finished model.
         # See https://huggingface.co/docs/transformers/main_classes/keras_callbacks#transformers.PushToHubCallback
 
-        history = model.fit(
-            tf_train_dataset,
-            validation_data=tf_eval_dataset,
-            epochs=int(training_args.num_train_epochs),
-            callbacks=callbacks,
-        )
-        train_loss = history.history["loss"][-1]
-        try:
-            train_perplexity = math.exp(train_loss)
-        except OverflowError:
-            train_perplexity = math.inf
-        logger.info(f"  Final train loss: {train_loss:.3f}")
-        logger.info(f"  Final train perplexity: {train_perplexity:.3f}")
+        #history = model.fit(
+        #    tf_train_dataset,
+        #    validation_data=tf_eval_dataset,
+        #    epochs=int(training_args.num_train_epochs),
+        #    callbacks=callbacks,
+        #)
+        #train_loss = history.history["loss"][-1]
+        #try:
+        #    train_perplexity = math.exp(train_loss)
+        #except OverflowError:
+        #    train_perplexity = math.inf
+        #logger.info(f"  Final train loss: {train_loss:.3f}")
+        #logger.info(f"  Final train perplexity: {train_perplexity:.3f}")
 
-    validation_loss = history.history["val_loss"][-1]
-    try:
-        validation_perplexity = math.exp(validation_loss)
-    except OverflowError:
-        validation_perplexity = math.inf
-    logger.info(f"  Final validation loss: {validation_loss:.3f}")
-    logger.info(f"  Final validation perplexity: {validation_perplexity:.3f}")
+    #validation_loss = history.history["val_loss"][-1]
+    #try:
+    #    validation_perplexity = math.exp(validation_loss)
+    #except OverflowError:
+    #    validation_perplexity = math.inf
+    #logger.info(f"  Final validation loss: {validation_loss:.3f}")
+    #logger.info(f"  Final validation perplexity: {validation_perplexity:.3f}")
 
-    if training_args.output_dir is not None:
-        output_eval_file = os.path.join(training_args.output_dir, "all_results.json")
-        results_dict = dict()
-        results_dict["train_loss"] = train_loss
-        results_dict["train_perplexity"] = train_perplexity
-        results_dict["eval_loss"] = validation_loss
-        results_dict["eval_perplexity"] = validation_perplexity
-        with open(output_eval_file, "w") as writer:
-            writer.write(json.dumps(results_dict))
-        # endregion
+    #if training_args.output_dir is not None:
+    #    output_eval_file = os.path.join(training_args.output_dir, "all_results.json")
+    #    results_dict = dict()
+    #    results_dict["train_loss"] = train_loss
+    #    results_dict["train_perplexity"] = train_perplexity
+    #    results_dict["eval_loss"] = validation_loss
+    #    results_dict["eval_perplexity"] = validation_perplexity
+    #    with open(output_eval_file, "w") as writer:
+    #        writer.write(json.dumps(results_dict))
+    #    # endregion
 
-    if training_args.output_dir is not None and not training_args.push_to_hub:
-        # If we're not pushing to hub, at least save a local copy when we're done
-        model.save_pretrained(training_args.output_dir)
+    #if training_args.output_dir is not None and not training_args.push_to_hub:
+    #    # If we're not pushing to hub, at least save a local copy when we're done
+    #    model.save_pretrained(training_args.output_dir)
 
 
 if __name__ == "__main__":
