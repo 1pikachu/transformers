@@ -600,22 +600,20 @@ def main():
         # endregion
 
         # region Training and validation
-        logger.info("***** Running training *****")
-        logger.info(f"  Num examples = {len(train_dataset)}")
-        logger.info(f"  Num Epochs = {training_args.num_train_epochs}")
-        logger.info(f"  Instantaneous batch size per device = {training_args.per_device_train_batch_size}")
-        logger.info(f"  Total train batch size = {training_args.per_device_train_batch_size * num_replicas}")
+        print("***** Running Evaluate *****")
+        print(f"  Num examples = {len(tf_eval_dataset)}")
+        print(f"  Num Epochs = {training_args.epochs}")
+        print(f"  Instantaneous batch size per device = {training_args.per_device_eval_batch_size}")
 
-        print("## Evaluate Start:")
         total_time = 0.0
         total_sample = 0
-        num_iter = int(len(tf_train_dataset) / training_args.per_device_eval_batch_size)
+        num_iter = int(len(tf_eval_dataset) / training_args.per_device_eval_batch_size)
         num_iter = min(num_iter, training_args.num_iter)
         for i in range(training_args.epochs):
             if training_args.profile and i == (training_args.epochs // 2):
                 tf.profiler.experimental.start(timeline_dir)
             start_time = time.time()
-            model.evaluate(tf_train_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
+            model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
             end_time = time.time()
             print("duration: ", end_time - start_time)
             if training_args.profile and i == (training_args.epochs // 2):
