@@ -311,6 +311,12 @@ class Trainer:
             args = TrainingArguments(output_dir=output_dir)
         self.args = args
         self.args.device = args.device
+
+        if self.args.device == "xpu":
+            import intel_extension_for_pytorch
+        elif self.args.device == "cuda":
+            torch.backends.cuda.matmul.allow_tf32 = False
+
         # Seed must be set before instantiating the model when using model
         enable_full_determinism(self.args.seed) if self.args.full_determinism else set_seed(self.args.seed)
         self.hp_name = None
@@ -2791,11 +2797,6 @@ class Trainer:
 
         #eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
         eval_loop = self.evaluation_loop
-
-        if self.args.device == "xpu":
-            import intel_extension_for_pytorch
-        elif self.args.device == "cuda":
-            torch.backends.cuda.matmul.allow_tf32 = False
 
         args = self.args
         with torch.inference_mode():

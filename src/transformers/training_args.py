@@ -1156,7 +1156,7 @@ class TrainingArguments:
             and is_torch_available()
             and (self.device != "cuda")
             and (get_xla_device_type(self.device) != "GPU")
-            and (self.device.type != "cpu")
+            and (self.device != "cpu")
             and (self.bf16 or self.bf16_full_eval)
         ):
             raise ValueError(
