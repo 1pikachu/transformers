@@ -624,7 +624,7 @@ def main():
         latency = total_time / total_sample * 1000
         throughput = total_sample / total_time
         print("### Latency:: {:.2f} ms".format(latency))
-        print("### Throughput: {:.3f} samples/s".format(throughput))
+        print("### inference Throughput: {:.3f} samples/s".format(throughput))
 
         # For long training runs, you may wish to use the PushToHub() callback here to save intermediate checkpoints
         # to the Hugging Face Hub rather than just pushing the finished model.
