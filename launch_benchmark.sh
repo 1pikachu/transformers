@@ -2,6 +2,8 @@
 set -xe
 
 function main {
+    git checkout tensorflow
+    git pull origin tensorflow
     # set common info
     source common.sh
     init_params $@
