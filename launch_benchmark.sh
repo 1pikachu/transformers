@@ -10,6 +10,7 @@ function main {
 
     # requirements
     pip install evaluate
+    pip uninstall transformers -y
     python setup.py develop
 
     # if multiple use 'xxx,xxx,xxx'
