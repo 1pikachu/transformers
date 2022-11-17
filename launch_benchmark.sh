@@ -33,8 +33,6 @@ function main {
             fi
             # launch
             echo -e "\n\n\n\n Running..."
-            cat ${excute_cmd_file} |column -t > ${excute_cmd_file}.tmp
-            mv ${excute_cmd_file}.tmp ${excute_cmd_file}
             source ${excute_cmd_file}
             echo -e "Finished.\n\n\n\n"
             # collect launch result
