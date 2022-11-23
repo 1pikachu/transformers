@@ -2799,7 +2799,7 @@ class Trainer:
         eval_loop = self.evaluation_loop
 
         args = self.args
-        with torch.inference_mode():
+        with torch.no_grad():
             if args.precision == "float16" and args.device == "cuda":
                 print("---- Use autocast fp16 cuda")
                 with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
@@ -3008,6 +3008,9 @@ class Trainer:
 
         model.eval()
         model = model.to(self.args.device)
+        if self.args.device == "xpu":
+            datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
+            model = torch.xpu.optimize(model=model, dtype=datatype)
         if self.args.channels_last:
             try:
                 model = model.to(memory_format=torch.channels_last)
@@ -3054,8 +3057,6 @@ class Trainer:
             for step, inputs in enumerate(dataloader):
                 if self.args.num_iters > 0 and step >= self.args.num_iters:
                     break
-                inputs = {i : inputs[i].to(args.device) 
-                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 # Update the observed num examples
                 observed_batch_size = find_batch_size(inputs)
                 if observed_batch_size is not None:
@@ -3067,6 +3068,8 @@ class Trainer:
                 # Prediction step
                 with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
                     tic = time.time()
+                    inputs = {i : inputs[i].to(args.device) 
+                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                     loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                     torch.xpu.synchronize()
                     toc = time.time()
@@ -3153,8 +3156,6 @@ class Trainer:
                 for step, inputs in enumerate(dataloader):
                     if self.args.num_iters > 0 and step >= self.args.num_iters:
                         break
-                    inputs = {i : inputs[i].to(args.device) 
-                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                     # Update the observed num examples
                     observed_batch_size = find_batch_size(inputs)
                     if observed_batch_size is not None:
@@ -3165,6 +3166,8 @@ class Trainer:
 
                     # Prediction step
                     tic = time.time()
+                    inputs = {i : inputs[i].to(args.device) 
+                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                     with torch.jit.fuser(fuser_mode):
                         loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                     torch.cuda.synchronize()
@@ -3241,8 +3244,6 @@ class Trainer:
                 for step, inputs in enumerate(dataloader):
                     if self.args.num_iters > 0 and step >= self.args.num_iters:
                         break
-                    inputs = {i : inputs[i].to(args.device) 
-                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                     # Update the observed num examples
                     observed_batch_size = find_batch_size(inputs)
                     if observed_batch_size is not None:
@@ -3253,6 +3254,8 @@ class Trainer:
 
                     # Prediction step
                     tic = time.time()
+                    inputs = {i : inputs[i].to(args.device) 
+                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                     loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                     toc = time.time()
                     p.step()
@@ -3317,8 +3320,6 @@ class Trainer:
             for step, inputs in enumerate(dataloader):
                 if self.args.num_iters > 0 and step >= self.args.num_iters:
                     break
-                inputs = {i : inputs[i].to(args.device) 
-                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 # Update the observed num examples
                 observed_batch_size = find_batch_size(inputs)
                 if observed_batch_size is not None:
@@ -3329,6 +3330,8 @@ class Trainer:
 
                 # Prediction step
                 tic = time.time()
+                inputs = {i : inputs[i].to(args.device) 
+                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 with torch.jit.fuser(fuser_mode):
                     loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                 torch.cuda.synchronize()
@@ -3394,8 +3397,6 @@ class Trainer:
             for step, inputs in enumerate(dataloader):
                 if self.args.num_iters > 0 and step >= self.args.num_iters:
                     break
-                inputs = {i : inputs[i].to(args.device) 
-                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 # Update the observed num examples
                 observed_batch_size = find_batch_size(inputs)
                 if observed_batch_size is not None:
@@ -3406,6 +3407,8 @@ class Trainer:
 
                 # Prediction step
                 tic = time.time()
+                inputs = {i : inputs[i].to(args.device) 
+                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                 if args.device == "xpu":
                     torch.xpu.synchronize()
