@@ -57,6 +57,7 @@ function generate_core {
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
 	    addtion_options+=" --nv_fuser "
         fi
+	# remove jit, because fail with "ValueError: not enough values to unpack (expected 2, got 1)" 
         printf " ${OOB_EXEC_HEADER} \
 	    python ./examples/pytorch/text-classification/run_glue.py \
 	    	--task_name MRPC --model_name_or_path allenai/longformer-base-4096 \
@@ -64,7 +65,7 @@ function generate_core {
 		--per_device_eval_batch_size ${batch_size} \
 	    	--num_iter $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
-		--jit --device ${device} \
+		--device ${device} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
         if [ "${numa_nodes_use}" == "0" ];then
