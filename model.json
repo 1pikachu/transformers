@@ -1,0 +1,135 @@
+{
+    "text-classification+google-electra-base-generator": {
+        "example_name": "text-classification",
+        "task_name": "cola",
+        "model_name": "google/electra-base-generator",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name cola --model_name_or_path google/electra-base-generator --max_seq_length 128 --learning_rate 2e-5 "
+    },
+    "token-classification+gpt2": {
+        "example_name": "token-classification",
+        "task_name": "",
+        "model_name": "gpt2",
+        "exec_args": " ./examples/pytorch/token-classification/run_ner.py --model_name_or_path ./gpt2-model-for-classification_2/ --dataset_name conll2003 "
+    },
+    "token-classification+google-electra-base-generator": {
+        "example_name": "token-classification",
+        "task_name": "",
+        "model_name": "google/electra-base-generator",
+        "exec_args": " ./examples/pytorch/token-classification/run_ner.py --model_name_or_path google/electra-base-generator --dataset_name conll2003 "
+    },
+    "multiple-choice+distilbert-base-cased": {
+        "example_name": "multiple-choice",
+        "task_name": "",
+        "model_name": "distilbert-base-cased",
+        "exec_args": " ./examples/pytorch/multiple-choice/run_swag.py --model_name_or_path distilbert-base-cased --learning_rate 5e-5 "
+    },
+    "multiple-choice+google-electra-base-discriminator": {
+        "example_name": "multiple-choice",
+        "task_name": "",
+        "model_name": "google/electra-base-discriminator",
+        "exec_args": " ./examples/pytorch/multiple-choice/run_swag.py --model_name_or_path google/electra-base-discriminator --learning_rate 5e-5 "
+    },
+    "question-answering+facebook-bart-large": {
+        "example_name": "question-answering",
+        "task_name": "",
+        "model_name": "facebook/bart-large",
+        "exec_args": " ./examples/pytorch/question-answering/run_qa.py --model_name_or_path facebook/bart-large --dataset_name squad --max_seq_length 384 --learning_rate 3e-5 --doc_stride 128 "
+    },
+    "masked-language-modeling+bert-base-cased": {
+        "example_name": "masked-language-modeling",
+        "task_name": "",
+        "model_name": "bert-base-cased",
+        "exec_args": " ./examples/pytorch/language-modeling/run_mlm.py --model_name_or_path bert-base-cased --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 "
+    },
+    "masked-language-modeling+distilbert-base-cased": {
+        "example_name": "masked-language-modeling",
+        "task_name": "",
+        "model_name": "distilbert-base-cased",
+        "exec_args": " ./examples/pytorch/language-modeling/run_mlm.py --model_name_or_path distilbert-base-cased --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 "
+    },
+    "casual-language-modeling+xlm-roberta-base": {
+        "example_name": "casual-language-modeling",
+        "task_name": "",
+        "model_name": "xlm-roberta-base",
+        "exec_args": " ./examples/pytorch/language-modeling/run_clm.py --model_name_or_path xlm-roberta-base --dataset_name wikitext --dataset_config_name wikitext-2-raw-v1 "
+    },
+    "summarization+t5-base": {
+        "example_name": "summarization",
+        "task_name": "",
+        "model_name": "t5-base",
+        "exec_args": " ./examples/pytorch/summarization/run_summarization.py --model_name_or_path t5-base --dataset_name xsum --predict_with_generate "
+    },
+    "summarization+t5-small": {
+        "example_name": "summarization",
+        "task_name": "",
+        "model_name": "t5-small",
+        "exec_args": " ./examples/pytorch/summarization/run_summarization.py --model_name_or_path t5-small --dataset_name xsum --predict_with_generate "
+    },
+    "BERT-Mini": {
+        "example_name": "text-classification",
+        "task_name": "cola",
+        "model_name": "prajjwal1/bert-mini",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --model_name_or_path prajjwal1/bert-mini --task_name cola --max_seq_length 16 --learning_rate 2e-5 "
+    },
+    "BERT-Tiny": {
+        "example_name": "text-classification",
+        "task_name": "cola",
+        "model_name": "prajjwal1/bert-tiny",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --model_name_or_path prajjwal1/bert-tiny --task_name cola --max_seq_length 16 --learning_rate 2e-5 "
+    },
+    "bert-large": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "bert-large-cased",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path bert-large-cased --max_seq_length 128 "
+    },
+    "distilbert": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "distilbert-base-uncased",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path distilbert-base-uncased "
+    },
+    "xlnet": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "xlnet-base-cased",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path xlnet-base-cased "
+    },
+    "albert": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "albert-base-v2",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path albert-base-v2 "
+    },
+    "roberta": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "roberta-base",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path roberta-base "
+    },
+    "xlm-roberta": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "xlm-roberta-base",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path xlm-roberta-base "
+    },
+    "bart": {
+        "example_name": "text-classification",
+        "task_name": "MRPC",
+        "model_name": "bart-large",
+        "exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path bart-large "
+    },
+    "gpt-2": {
+        "example_name": "text-generation",
+        "task_name": "",
+        "model_name": "gpt2",
+        "exec_args": " ./examples/pytorch/text-generation/run_generation.py --no_cuda --model_type=gpt2 --model_name_or_path=gpt2 "
+    },
+    "longformers": {
+	"example_name": "text-classification",
+	"task_name": "MRPC",
+	"model_name": "allenai/longformer-base-4096",
+	"exec_args": " ./examples/pytorch/text-classification/run_glue.py --task_name MRPC --model_name_or_path allenai/longformer-base-4096 "
+    }
+}
+

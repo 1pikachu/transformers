@@ -9,7 +9,7 @@ function main {
     set_environment
 
     # requirements
-    pip install evaluate
+    pip install evaluate datasets
     pip uninstall transformers -y
     python setup.py develop
 
@@ -25,6 +25,15 @@ function main {
         do
             # clean workspace
             logs_path_clean
+
+	    # get exec cmd
+            exec_base_cmd=$(jq --arg m ${model_name} '.[$m].exec_args' ./model.json |sed 's/"//g')
+	    # download gpt2 model
+            if [ "${model_name}" == "token-classification+gpt2" ];then
+                rm -rf ./gpt2-model-for-classification_2/
+                python ${workload_dir}/gpt2-model-for-classification.py --precision ${precision}
+            fi
+
             # generate launch script for multiple instance
             if [ "${OOB_USE_LAUNCHER}" == "1" ] && [ "${device}" == "cpu" ];then
                 generate_core_launcher
@@ -57,10 +66,9 @@ function generate_core {
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
 	    addtion_options+=" --nv_fuser "
         fi
-	# remove jit, because fail with "ValueError: not enough values to unpack (expected 2, got 1)" 
+	# remove jit, longformers fail with "ValueError: not enough values to unpack (expected 2, got 1)"
         printf " ${OOB_EXEC_HEADER} \
-	    python ./examples/pytorch/text-classification/run_glue.py \
-	    	--task_name MRPC --model_name_or_path allenai/longformer-base-4096 \
+	    python ${exec_base_cmd} \
 		--do_eval --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
 		--per_device_eval_batch_size ${batch_size} \
 	    	--num_iter $num_iter --num_warmup $num_warmup \
