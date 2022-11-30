@@ -3051,7 +3051,7 @@ class Trainer:
         observed_num_examples = 0
         total_time = 0.0
         total_data = 0
-        profile_len = min(len(dataloader), args.num_iters + args.num_warmup) // 2
+        profile_len = min(len(dataloader), args.num_iters) // 2
         # Main evaluation loop
         if args.profile and args.device == "xpu":
             for step, inputs in enumerate(dataloader):
