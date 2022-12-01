@@ -83,7 +83,7 @@ function generate_core {
         printf " ${OOB_EXEC_HEADER} \
 	    python ${exec_base_cmd} \
 		${perf_mode} --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
-	    	--num_iter $num_iter --num_warmup $num_warmup \
+	        --num_iters $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
 		--device ${device} \
                 ${addtion_options} \
