@@ -9,7 +9,7 @@
         "example_name": "token-classification",
         "task_name": "",
         "model_name": "gpt2",
-        "exec_args": " ./examples/pytorch/token-classification/run_ner.py --model_name_or_path ./gpt2-model-for-classification_2/ --dataset_name conll2003 "
+        "exec_args": " ./examples/pytorch/token-classification/run_ner.py --model_name_or_path gpt2 --dataset_name conll2003 "
     },
     "token-classification+google-electra-base-generator": {
         "example_name": "token-classification",
@@ -123,7 +123,7 @@
         "example_name": "text-generation",
         "task_name": "",
         "model_name": "gpt2",
-        "exec_args": " ./examples/pytorch/text-generation/run_generation.py --no_cuda --model_type=gpt2 --model_name_or_path=gpt2 "
+        "exec_args": " ./examples/pytorch/text-generation/run_generation.py --model_type=gpt2 --model_name_or_path=gpt2 "
     },
     "longformers": {
 	"example_name": "text-classification",

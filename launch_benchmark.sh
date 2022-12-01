@@ -38,10 +38,10 @@ function main {
     	    fi
 
 	    # download gpt2 model
-            if [ "${model_name}" == "token-classification+gpt2" ];then
-                rm -rf ./gpt2-model-for-classification_2/
-                python ${workload_dir}/gpt2-model-for-classification.py --precision ${precision}
-            fi
+            #if [ "${model_name}" == "token-classification+gpt2" ];then
+            #    rm -rf ./gpt2-model-for-classification_2/
+            #    python ${workload_dir}/gpt2-model-for-classification.py --precision ${precision}
+            #fi
 
             # generate launch script for multiple instance
             if [ "${OOB_USE_LAUNCHER}" == "1" ] && [ "${device}" == "cpu" ];then

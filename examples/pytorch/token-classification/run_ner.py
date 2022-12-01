@@ -357,6 +357,7 @@ def main():
             use_auth_token=True if model_args.use_auth_token else None,
             add_prefix_space=True,
         )
+        tokenizer.pad_token = tokenizer.eos_token
     else:
         tokenizer = AutoTokenizer.from_pretrained(
             tokenizer_name_or_path,
@@ -375,6 +376,7 @@ def main():
         use_auth_token=True if model_args.use_auth_token else None,
         ignore_mismatched_sizes=model_args.ignore_mismatched_sizes,
     )
+    #model.config.pad_token_id = tokenizer.pad_token_id
 
     # Tokenizer check: this script requires a fast tokenizer.
     if not isinstance(tokenizer, PreTrainedTokenizerFast):
