@@ -28,6 +28,15 @@ function main {
 
 	    # get exec cmd
             exec_base_cmd=$(jq --arg m ${model_name} '.[$m].exec_args' ./model.json |sed 's/"//g')
+	    # get batchSize
+    	    if [[ ${mode_name} == "train" ]];then
+    	        perf_mode=" --do_train "
+	    	perf_mode+=" --per_device_train_batch_size ${batch_size} "
+    	    else # realtime
+    	        perf_mode=" --do_eval "
+	    	perf_mode+=" --per_device_eval_batch_size ${batch_size} "
+    	    fi
+
 	    # download gpt2 model
             if [ "${model_name}" == "token-classification+gpt2" ];then
                 rm -rf ./gpt2-model-for-classification_2/
@@ -64,13 +73,16 @@ function generate_core {
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
         elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
-	    addtion_options+=" --nv_fuser "
-        fi
+	    if [[ "${mode_name}" == "realtime" ]];then
+	        addtion_options+=" --nv_fuser "
+	    fi
+	elif [ "${mode_name}" == "train" && "${device}" == "xpu" ];then
+	    OOB_EXEC_HEADER=" IPEX_XPU_ONEDNN_LAYOUT=0 "
+	fi
 	# remove jit, longformers fail with "ValueError: not enough values to unpack (expected 2, got 1)"
         printf " ${OOB_EXEC_HEADER} \
 	    python ${exec_base_cmd} \
-		--do_eval --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
-		--per_device_eval_batch_size ${batch_size} \
+		${perf_mode} --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
 	    	--num_iter $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
 		--device ${device} \
