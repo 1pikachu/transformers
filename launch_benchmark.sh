@@ -76,7 +76,7 @@ function generate_core {
 	    if [[ "${mode_name}" == "realtime" ]];then
 	        addtion_options+=" --nv_fuser "
 	    fi
-	elif [ "${mode_name}" == "train" && "${device}" == "xpu" ];then
+	elif [[ "${mode_name}" == "train" && "${device}" == "xpu" ]];then
 	    OOB_EXEC_HEADER=" IPEX_XPU_ONEDNN_LAYOUT=0 "
 	fi
 	# remove jit, longformers fail with "ValueError: not enough values to unpack (expected 2, got 1)"
