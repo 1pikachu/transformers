@@ -1714,7 +1714,7 @@ class Trainer:
         model.train()
         self.args.datatype = torch.float16 if self.args.precision == "float16" else torch.bfloat16 if self.args.precision == "bfloat16" else torch.float32
         if self.args.device == "xpu":
-            model, self.optimizer = torch.xpu.optimize(model=model, optimizer=optimizer, dtype=self.args.datatype)
+            model, self.optimizer = torch.xpu.optimize(model=model, optimizer=self.optimizer, dtype=self.args.datatype)
             print("---- xpu optimize")
         num_train_epochs = epochs_trained + 1
 
