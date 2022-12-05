@@ -85,7 +85,7 @@ function generate_core {
 		${perf_mode} --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
 	        --num_iters $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
-		--device ${device} --batch_size ${batch_size} \
+		--device ${device} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
         if [ "${numa_nodes_use}" == "0" ];then
