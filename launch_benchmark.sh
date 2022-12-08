@@ -9,7 +9,8 @@ function main {
     set_environment
 
     # requirements
-    pip install evaluate datasets
+    pip uninstall h5py -y
+    pip install evaluate datasets h5py==3.7.0
     pip uninstall transformers -y
     pip install -e .
 
