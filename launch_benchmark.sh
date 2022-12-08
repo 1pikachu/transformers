@@ -47,10 +47,10 @@ function generate_core {
         log_file="${log_dir}/rcpi${real_cores_per_instance}-ins${i}.log"
 
         # instances
-        if [ "${device}" != "cuda" ];then
+        if [ "${device}" == "cpu" ];then
             OOB_EXEC_HEADER=" numactl -m $(echo ${device_array[i]} |awk -F ';' '{print $2}') "
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
-        else
+        elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
         fi
         printf " ${OOB_EXEC_HEADER} \
