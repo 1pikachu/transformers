@@ -57,7 +57,7 @@ function generate_core {
 	    python examples/tensorflow/language-modeling/run_mlm.py \
 	    	--model_name_or_path bert-base-multilingual-uncased \
 		--dataset_name wikitext  --dataset_config_name wikitext-103-raw-v1 \
-		--output_dir /tmp/tmp0 \
+		--output_dir /tmp/tmp0 --overwrite_output_dir \
 		--epochs 3 --num_iter ${num_iter} --num_warmup 1 \
 		--precision ${precision} --per_device_eval_batch_size $batch_size \
                 ${addtion_options} \
