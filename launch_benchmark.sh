@@ -67,7 +67,7 @@ function generate_core {
 }
 
 # download common files
-wget -q -O common.sh https://raw.githubusercontent.com/mengfei25/oob-common/gpuoob/common.sh
+timeout 10s wget -q -O common.sh https://raw.githubusercontent.com/mengfei25/oob-common/gpuoob/common.sh || cp /tmp/common.sh .
 
 # Start
 main "$@"
