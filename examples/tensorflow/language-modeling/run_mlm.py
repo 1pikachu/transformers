@@ -611,13 +611,16 @@ def main():
         num_iter = min(num_iter, training_args.num_iter)
         for i in range(training_args.epochs):
             if training_args.profile and i == (training_args.epochs // 2):
-                tf.profiler.experimental.start(timeline_dir)
+                print("---- collect tensorboard")
+                options = tf.profiler.experimental.ProfilerOptions(host_tracer_level = 3, python_tracer_level = 1, device_tracer_level = 1)
+                tf.profiler.experimental.start('./tensorboard_data', options = options)
             start_time = time.time()
             model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
             end_time = time.time()
             print("duration: ", end_time - start_time)
             if training_args.profile and i == (training_args.epochs // 2):
                 tf.profiler.experimental.stop()
+                print("---- collect tensorboard end")
             if i >= training_args.num_warmup:
                 total_time += end_time - start_time
                 total_sample += num_iter * training_args.per_device_eval_batch_size
