@@ -195,6 +195,9 @@ class TFTrainingArguments(TrainingArguments):
     profile: bool = field(
         default=False, metadata={"help": "Collect timeline."}
     )
+    tensorboard: bool = field(
+        default=False, metadata={"help": "Collect tensorboard"}
+    )
     precision: str = field(
         default="",
         metadata={"help": "To use (mixed) precision"},
