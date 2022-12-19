@@ -3,7 +3,7 @@ set -xe
 
 function main {
     # set common info
-    source common.sh
+    source oob-common/common.sh
     init_params $@
     fetch_device_info
     set_environment
@@ -69,7 +69,7 @@ function generate_core {
 }
 
 # download common files
-timeout 10s wget -q -O common.sh https://raw.githubusercontent.com/mengfei25/oob-common/gpuoob/common.sh || cp /tmp/common.sh .
+rm -rf oob-common && git clone https://github.com/intel-sandbox/oob-common.git -b gpu_oob
 
 # Start
 main "$@"
