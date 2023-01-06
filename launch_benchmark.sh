@@ -12,6 +12,7 @@ function main {
     pip install evaluate datasets
     pip uninstall transformers -y
     python setup.py develop
+    export WANDB_DISABLED=True
 
     # if multiple use 'xxx,xxx,xxx'
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))
