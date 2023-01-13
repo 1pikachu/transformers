@@ -618,7 +618,7 @@ def main():
             start_time = time.time()
             model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
             end_time = time.time()
-            print("Iteration: {}, inference time: {}".format(i, end_time - start_time))
+            print("Iteration: {}, inference time: {}".format(i, end_time - start_time), flush=True)
             if training_args.tensorboard and i == (training_args.epochs // 2):
                 tf.profiler.experimental.stop()
                 print("---- collect tensorboard end")
