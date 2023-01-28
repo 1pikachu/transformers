@@ -2024,6 +2024,9 @@ class Trainer:
                 for step, inputs in enumerate(epoch_iterator):
                     if step >= self.args.num_iters - 1:
                         self.control.should_training_stop = True
+                    print("--------input shape---------")
+                    for i in inputs:
+                        print("label:{}, shape:{}".format(i, inputs[i].shape))
 
                     # Skip past any already trained steps if resuming training
                     if steps_trained_in_current_epoch > 0:
@@ -3652,6 +3655,9 @@ class Trainer:
                     # For batch samplers, batch_size is not known by the dataloader in advance.
                     if batch_size is None:
                         batch_size = observed_batch_size
+                print("--------input shape---------")
+                for i in inputs:
+                    print("label:{}, shape:{}".format(i, inputs[i].shape))
 
                 # Prediction step
                 tic = time.time()
@@ -3723,6 +3729,9 @@ class Trainer:
             for step, inputs in enumerate(dataloader):
                 if self.args.num_iters > 0 and step >= self.args.num_iters:
                     break
+                print("--------input shape---------")
+                for i in inputs:
+                    print("label:{}, shape:{}".format(i, inputs[i].shape))
                 # Update the observed num examples
                 observed_batch_size = find_batch_size(inputs)
                 if observed_batch_size is not None:
