@@ -3395,7 +3395,8 @@ class Trainer:
                 inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
                 print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                if step >= self.args.num_warmup:
+                if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
+                    print("the iteration-{} has been calcute perf".format(step))
                     total_time += toc - tic
                     total_data += batch_size
                 if args.profile and step == profile_len:
@@ -3498,7 +3499,8 @@ class Trainer:
                     inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
                     print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                    if step >= self.args.num_warmup:
+                    if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
+                        print("the iteration-{} has been calcute perf".format(step))
                         total_time += toc - tic
                         total_data += batch_size
 
@@ -3584,7 +3586,8 @@ class Trainer:
                     inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
                     print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                    if step >= self.args.num_warmup:
+                    if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
+                        print("the iteration-{} has been calcute perf".format(step))
                         total_time += toc - tic
                         total_data += batch_size
 
@@ -3661,7 +3664,8 @@ class Trainer:
                 inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
                 print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                if step >= self.args.num_warmup:
+                if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
+                    print("the iteration-{} has been calcute perf".format(step))
                     total_time += toc - tic
                     total_data += batch_size
 
@@ -3738,7 +3742,8 @@ class Trainer:
                 inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
                 print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                if step >= self.args.num_warmup:
+                if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
+                    print("the iteration-{} has been calcute perf".format(step))
                     total_time += toc - tic
                     total_data += batch_size
 
