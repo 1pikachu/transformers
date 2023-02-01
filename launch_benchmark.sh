@@ -9,7 +9,7 @@ function main {
     set_environment
 
     # requirements
-    pip install evaluate datasets==2.8.0
+    pip install evaluate datasets==2.8.0 tokenizers==0.10.3
     pip uninstall transformers -y
     python setup.py develop
     export WANDB_DISABLED=True
