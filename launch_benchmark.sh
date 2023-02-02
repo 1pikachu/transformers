@@ -11,7 +11,7 @@ function main {
     # requirements
     pip install evaluate datasets==2.8.0
     pip uninstall tokenizers transformers -y
-    python setup.py develop
+    python setup.py install
     export WANDB_DISABLED=True
 
     # if multiple use 'xxx,xxx,xxx'
