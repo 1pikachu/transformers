@@ -26,7 +26,6 @@ function main {
         do
             # clean workspace
             logs_path_clean
-            generate_core
 	    if [[ ${mode_name} == "train" ]];then
                 perf_mode=" --do_train "
                 perf_mode+=" --per_device_train_batch_size ${batch_size} "
@@ -34,6 +33,7 @@ function main {
                 perf_mode=" --do_eval "
                 perf_mode+=" --per_device_eval_batch_size ${batch_size} "
             fi
+            generate_core
             # launch
             echo -e "\n\n\n\n Running..."
             #cat ${excute_cmd_file} |column -t > ${excute_cmd_file}.tmp
