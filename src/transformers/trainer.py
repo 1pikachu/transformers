@@ -3333,7 +3333,7 @@ class Trainer:
         if self.args.device == "xpu":
             datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
             model = torch.xpu.optimize(model=model, dtype=datatype)
-        if self.args.channels_last:
+        if self.args.channels_last and self.args.device != "xpu":
             try:
                 model = model.to(memory_format=torch.channels_last)
                 print("---- Use NHWC model")
