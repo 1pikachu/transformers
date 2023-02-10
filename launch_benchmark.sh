@@ -27,8 +27,6 @@ function main {
             # clean workspace
             logs_path_clean
 
-	    # get exec cmd
-            exec_base_cmd=$(jq --arg m ${model_name} '.[$m].exec_args' ./model.json |sed 's/"//g')
 	    # get batchSize
     	    if [[ ${mode_name} == "train" ]];then
     	        perf_mode=" --do_train "
@@ -80,7 +78,7 @@ function generate_core {
 	fi
 	# remove jit, longformers fail with "ValueError: not enough values to unpack (expected 2, got 1)"
         printf " ${OOB_EXEC_HEADER} \
-	    python ${exec_base_cmd} \
+	    python examples/${framework}/$(echo ${EXAMPLE_ARGS}) \
 		${perf_mode} --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
 	        --num_iters $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
