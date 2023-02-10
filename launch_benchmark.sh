@@ -27,6 +27,13 @@ function main {
             # clean workspace
             logs_path_clean
             generate_core
+	    if [[ ${mode_name} == "train" ]];then
+                perf_mode=" --do_train "
+                perf_mode+=" --per_device_train_batch_size ${batch_size} "
+            else # realtime
+                perf_mode=" --do_eval "
+                perf_mode+=" --per_device_eval_batch_size ${batch_size} "
+            fi
             # launch
             echo -e "\n\n\n\n Running..."
             #cat ${excute_cmd_file} |column -t > ${excute_cmd_file}.tmp
@@ -57,9 +64,10 @@ function generate_core {
 	OOB_EXEC_HEADER+=" ${OOB_EXTRA_HEADER} "
         printf " ${OOB_EXEC_HEADER} \
 	    python examples/${framework}/$(echo ${EXAMPLE_ARGS}) \
+                ${perf_mode} \
 		--output_dir /tmp/tmp0 --overwrite_output_dir \
 		--epochs 3 --num_iter ${num_iter} --num_warmup 1 \
-		--precision ${precision} --per_device_eval_batch_size $batch_size \
+		--precision ${precision} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
     done
