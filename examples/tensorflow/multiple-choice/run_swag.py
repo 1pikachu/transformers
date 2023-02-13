@@ -269,12 +269,12 @@ def main():
         datefmt="%m/%d/%Y %H:%M:%S",
         handlers=[logging.StreamHandler(sys.stdout)],
     )
-    log_level = training_args.get_process_log_level()
-    logger.setLevel(log_level)
-    datasets.utils.logging.set_verbosity(log_level)
-    transformers.utils.logging.set_verbosity(log_level)
-    transformers.utils.logging.enable_default_handler()
-    transformers.utils.logging.enable_explicit_format()
+    #log_level = training_args.get_process_log_level()
+    #logger.setLevel(log_level)
+    #datasets.utils.logging.set_verbosity(log_level)
+    #transformers.utils.logging.set_verbosity(log_level)
+    #transformers.utils.logging.enable_default_handler()
+    #transformers.utils.logging.enable_explicit_format()
     # endregion
 
     # region Checkpoints
