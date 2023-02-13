@@ -253,7 +253,7 @@ def main():
 
     if training_args.precision != 'tfloat32':
         tf.config.experimental.enable_tensor_float_32_execution(False)
-    if training_args.precision == 'float16':
+    if training_args.precision == 'float16' and training_args.device_str == 'cuda':
         from tensorflow.keras import mixed_precision
         policy = mixed_precision.Policy('mixed_float16')
         mixed_precision.set_global_policy(policy)

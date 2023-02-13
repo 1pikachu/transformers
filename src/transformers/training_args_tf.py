@@ -206,6 +206,10 @@ class TFTrainingArguments(TrainingArguments):
         default=3,
         metadata={"help": "inference epoch"},
     )
+    device_str: str = field(
+        default="xpu",
+        metadata={"help": "device"},
+    )
 
     @cached_property
     @tf_required

@@ -67,7 +67,7 @@ function generate_core {
                 ${perf_mode} \
 		--output_dir /tmp/tmp0 --overwrite_output_dir \
 		--epochs 3 --num_iter ${num_iter} --num_warmup 1 \
-		--precision ${precision} \
+		--precision ${precision} --device_str ${device} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}
     done
