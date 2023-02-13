@@ -63,7 +63,6 @@ logger = logging.getLogger(__name__)
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/tensorflow/language-modeling/requirements.txt")
 MODEL_CONFIG_CLASSES = list(TF_MODEL_FOR_MASKED_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
-tf.config.experimental.enable_tensor_float_32_execution(False)
 
 
 # region Command-line arguments
@@ -252,7 +251,9 @@ def main():
         data_args.pad_to_max_length = True
     # endregion
 
-    if training_args.precision == 'float16' :
+    if training_args.precision != 'tfloat32':
+        tf.config.experimental.enable_tensor_float_32_execution(False)
+    if training_args.precision == 'float16':
         from tensorflow.keras import mixed_precision
         policy = mixed_precision.Policy('mixed_float16')
         mixed_precision.set_global_policy(policy)

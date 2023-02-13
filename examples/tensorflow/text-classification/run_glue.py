@@ -19,6 +19,7 @@
 import json
 import logging
 import os
+import time
 import sys
 from dataclasses import dataclass, field
 from typing import Optional
@@ -184,6 +185,7 @@ def main():
     # or by passing the --help flag to this script.
     # We now keep distinct sets of args, for a cleaner separation of concerns.
 
+
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TFTrainingArguments))
     if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # If we pass only one argument to the script and it's the path to a json file,
@@ -191,6 +193,24 @@ def main():
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+    # OOB
+    if training_args.precision != 'tfloat32':
+        tf.config.experimental.enable_tensor_float_32_execution(False)
+    if training_args.precision == 'float16':
+        from tensorflow.keras import mixed_precision
+        policy = mixed_precision.Policy('mixed_float16')
+        mixed_precision.set_global_policy(policy)
+
+        from tensorflow.keras import layers
+        num_units = 64
+        dense1 = layers.Dense(num_units, activation='relu', name='dense_1')
+        print(dense1.dtype_policy)
+    if training_args.profile:
+        # timeline
+        import pathlib
+        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/' + str(os.getpid())
+
 
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
@@ -520,7 +540,17 @@ def main():
                 raw_datasets = [datasets["validation"]]
 
             for raw_dataset, tf_dataset, task in zip(raw_datasets, tf_datasets, tasks):
-                eval_predictions = model.predict(tf_dataset)
+                if training_args.num_iter is not None and training_args.num_iter > len(tf_dataset):
+                    training_args.num_iter = len(tf_dataset)
+                # warmup
+                eval_predictions = model.predict(tf_dataset, steps=math.ceil(training_args.num_iter/10), batch_size=1)
+                # forward
+                elapsed = time.time()
+                eval_predictions = model.predict(tf_dataset, steps=training_args.num_iter, batch_size=training_args.per_device_eval_batch_size)
+                elapsed = time.time() - elapsed
+                throughput = training_args.num_iter * training_args.per_device_eval_batch_size / elapsed
+                print("inference Throughput: {} samples/s".format(throughput))
+                exit()
                 eval_metrics = compute_metrics(eval_predictions, raw_dataset["label"])
                 print(f"Evaluation metrics ({task}):")
                 print(eval_metrics)
