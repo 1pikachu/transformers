@@ -21,6 +21,7 @@ Fine-tuning the library models for multiple choice.
 import json
 import logging
 import os
+import math
 import sys
 from dataclasses import dataclass, field
 from itertools import chain
