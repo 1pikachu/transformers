@@ -47,6 +47,8 @@ from transformers import (
 from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version, send_example_telemetry
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0.dev0")
@@ -540,6 +542,7 @@ def main():
                 tf_datasets = [tf_data["validation"]]
                 raw_datasets = [datasets["validation"]]
 
+            keras_hook = ExampleHook(training_args.tensorboard)
             for raw_dataset, tf_dataset, task in zip(raw_datasets, tf_datasets, tasks):
                 if training_args.num_iter is not None and training_args.num_iter > len(tf_dataset):
                     training_args.num_iter = len(tf_dataset)
@@ -547,7 +550,7 @@ def main():
                 eval_predictions = model.predict(tf_dataset, steps=math.ceil(training_args.num_iter/10), batch_size=1)
                 # forward
                 elapsed = time.time()
-                eval_predictions = model.predict(tf_dataset, steps=training_args.num_iter, batch_size=training_args.per_device_eval_batch_size)
+                eval_predictions = model.predict(tf_dataset, steps=training_args.num_iter, batch_size=training_args.per_device_eval_batch_size, callbacks=[keras_hook])
                 elapsed = time.time() - elapsed
                 throughput = training_args.num_iter * training_args.per_device_eval_batch_size / elapsed
                 print("inference Throughput: {} samples/s".format(throughput))

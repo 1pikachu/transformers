@@ -58,6 +58,9 @@ from transformers import (
 from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
+
 
 logger = logging.getLogger(__name__)
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/tensorflow/language-modeling/requirements.txt")
@@ -611,15 +614,15 @@ def main():
         total_sample = 0
         num_iter = int(len(tf_eval_dataset) / training_args.per_device_eval_batch_size)
         num_iter = min(num_iter, training_args.num_iter)
+        keras_hook = ExampleHook(training_args.tensorboard)
         for i in range(training_args.epochs):
             if training_args.tensorboard and i == (training_args.epochs // 2):
                 print("---- collect tensorboard")
                 options = tf.profiler.experimental.ProfilerOptions(host_tracer_level = 3, python_tracer_level = 1, device_tracer_level = 1)
                 tf.profiler.experimental.start('./tensorboard_data', options = options)
             start_time = time.time()
-            model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
+            model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size, callbacks=[keras_hook])
             end_time = time.time()
-            print("Iteration: {}, inference time: {}".format(i, end_time - start_time), flush=True)
             if training_args.tensorboard and i == (training_args.epochs // 2):
                 tf.profiler.experimental.stop()
                 print("---- collect tensorboard end")

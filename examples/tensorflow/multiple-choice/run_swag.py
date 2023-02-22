@@ -50,6 +50,8 @@ from transformers import (
 from transformers.tokenization_utils_base import PreTrainedTokenizerBase
 from transformers.utils import PaddingStrategy, check_min_version, send_example_telemetry
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0.dev0")
@@ -553,13 +555,16 @@ def main():
             ).with_options(dataset_options)
             if training_args.num_iter is not None and training_args.num_iter > len(tf_eval_dataset):
                 training_args.num_iter = len(tf_eval_dataset)
+
+            keras_hook = ExampleHook(training_args.tensorboard)
             # warmup
             eval_results = model.evaluate(tf_eval_dataset, steps=math.ceil(training_args.num_iter/10))
             elapsed = time.time()
             eval_results = model.evaluate(
                 tf_eval_dataset,
                 steps=training_args.num_iter,
-                batch_size=training_args.per_device_eval_batch_size
+                batch_size=training_args.per_device_eval_batch_size,
+                callbacks=[keras_hook]
             )
             elapsed = time.time() - elapsed
             throughput = training_args.num_iter * training_args.per_device_eval_batch_size / elapsed

@@ -48,6 +48,8 @@ from transformers import (
 from transformers.utils import CONFIG_NAME, TF2_WEIGHTS_NAME, check_min_version, send_example_telemetry
 from utils_qa import postprocess_qa_predictions
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.24.0.dev0")
@@ -757,13 +759,16 @@ def main():
             # https://huggingface.co/docs/transformers/main/en/main_classes/keras_callbacks
             if training_args.num_iter is not None and training_args.num_iter > len(eval_dataset):
                 training_args.num_iter = len(eval_dataset)
+
+            keras_hook = ExampleHook(training_args.tensorboard)
             # warmup
             eval_predictions = model.predict(eval_dataset, steps=math.ceil(training_args.num_iter/10))
             elapsed = time.time()
             eval_predictions = model.predict(
                 eval_dataset,
                 steps=training_args.num_iter,
-                batch_size=training_args.per_device_eval_batch_size
+                batch_size=training_args.per_device_eval_batch_size,
+                callbacks=[keras_hook]
             )
             elapsed = time.time() - elapsed
             throughput = training_args.num_iter * training_args.per_device_eval_batch_size / elapsed

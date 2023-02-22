@@ -59,6 +59,8 @@ from transformers import (
 from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
 
 logger = logging.getLogger(__name__)
 require_version("datasets>=1.8.0", "To fix: pip install -r examples/tensorflow/language-modeling/requirements.txt")
@@ -626,13 +628,15 @@ def main():
         if training_args.do_eval:
             if training_args.num_iter is not None and training_args.num_iter > len(tf_eval_dataset):
                 training_args.num_iter = len(tf_eval_dataset)
+            keras_hook = ExampleHook(training_args.tensorboard)
             # warmup
             eval_predictions = model.predict(tf_eval_dataset, steps=math.ceil(training_args.num_iter/10), batch_size=1)
             elapsed = time.time()
             eval_predictions = model.predict(
                 tf_eval_dataset,
                 steps=training_args.num_iter,
-                batch_size=training_args.per_device_eval_batch_size
+                batch_size=training_args.per_device_eval_batch_size,
+                callbacks=[keras_hook]
             )
             elapsed = time.time() - elapsed
             throughput = training_args.num_iter * training_args.per_device_eval_batch_size / elapsed

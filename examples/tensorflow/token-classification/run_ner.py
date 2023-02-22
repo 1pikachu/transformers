@@ -48,6 +48,9 @@ from transformers import (
 from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
+
 
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.StreamHandler())
@@ -559,6 +562,7 @@ def main():
         # this bit might fail on TF < 2.8 because TF can't concatenate outputs of varying seq
         # length from predict().
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_eval:
             if training_args.num_iter is not None and training_args.num_iter > len(tf_eval_dataset):
                 training_args.num_iter = len(tf_eval_dataset)
@@ -570,7 +574,7 @@ def main():
                     steps=math.ceil(training_args.num_iter/10)
                 )["logits"]
                 elapsed = time.time()
-                predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter)["logits"]
+                predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter, callbacks=[keras_hook])["logits"]
                 elapsed = time.time() - elapsed
                 throughput = training_args.num_iter * training_args.per_device_eval_batch_size / elapsed
                 print("inference Throughput: {} samples/s".format(throughput))
