@@ -14,6 +14,7 @@ function main {
     pip uninstall transformers -y
     pip install -e .
 
+    cp oob-common/hooks.py .
     # if multiple use 'xxx,xxx,xxx'
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))
     batch_size_list=($(echo "${batch_size}" |sed 's/,/ /g'))
