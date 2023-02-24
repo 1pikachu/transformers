@@ -615,17 +615,13 @@ def main():
         num_iter = int(len(tf_eval_dataset) / training_args.per_device_eval_batch_size)
         num_iter = min(num_iter, training_args.num_iter)
         keras_hook = ExampleHook(training_args.tensorboard)
+        print("---- dataset length:", len(tf_eval_dataset))
+        if args.warmup_for_dynamicshape:
+            model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
         for i in range(training_args.epochs):
-            if training_args.tensorboard and i == (training_args.epochs // 2):
-                print("---- collect tensorboard")
-                options = tf.profiler.experimental.ProfilerOptions(host_tracer_level = 3, python_tracer_level = 1, device_tracer_level = 1)
-                tf.profiler.experimental.start('./tensorboard_data', options = options)
             start_time = time.time()
             model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size, callbacks=[keras_hook])
             end_time = time.time()
-            if training_args.tensorboard and i == (training_args.epochs // 2):
-                tf.profiler.experimental.stop()
-                print("---- collect tensorboard end")
             if i >= training_args.num_warmup:
                 total_time += end_time - start_time
                 total_sample += num_iter * training_args.per_device_eval_batch_size

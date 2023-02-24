@@ -557,8 +557,16 @@ def main():
                 training_args.num_iter = len(tf_eval_dataset)
 
             keras_hook = ExampleHook(training_args.tensorboard)
+            print("---- dataset length:", len(tf_eval_dataset))
             # warmup
-            eval_results = model.evaluate(tf_eval_dataset, steps=math.ceil(training_args.num_iter/10))
+            if args.warmup_for_dynamicshape:
+                eval_results = model.evaluate(
+                    tf_eval_dataset,
+                    steps=training_args.num_iter,
+                    batch_size=training_args.per_device_eval_batch_size,
+                )
+            else:
+                eval_results = model.evaluate(tf_eval_dataset, steps=math.ceil(training_args.num_iter/10))
             elapsed = time.time()
             eval_results = model.evaluate(
                 tf_eval_dataset,

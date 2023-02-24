@@ -210,6 +210,9 @@ class TFTrainingArguments(TrainingArguments):
         default="xpu",
         metadata={"help": "device"},
     )
+    warmup_for_dynamicshape: bool = field(
+        default=False, metadata={"help": "dynamicShape warmup"}
+    )
 
     @cached_property
     @tf_required
@@ -238,6 +241,7 @@ class TFTrainingArguments(TrainingArguments):
                 else:
                     tpu = None
 
+            xpus = tf.config.list_physical_devices("XPU")
             if tpu:
                 # Set to bfloat16 in case of TPU
                 if self.fp16:
@@ -248,6 +252,8 @@ class TFTrainingArguments(TrainingArguments):
 
                 strategy = tf.distribute.TPUStrategy(tpu)
 
+            elif len(xpus) > 0:
+                strategy = tf.distribute.OneDeviceStrategy(device="/xpu:0")
             elif len(gpus) == 0:
                 strategy = tf.distribute.OneDeviceStrategy(device="/cpu:0")
             elif len(gpus) == 1:

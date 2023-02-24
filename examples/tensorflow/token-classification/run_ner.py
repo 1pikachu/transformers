@@ -567,13 +567,17 @@ def main():
         if training_args.do_eval:
             if training_args.num_iter is not None and training_args.num_iter > len(tf_eval_dataset):
                 training_args.num_iter = len(tf_eval_dataset)
+            print("---- dataset length:", len(tf_eval_dataset))
             try:
                 # warmup
-                predictions = model.predict(
-                    tf_eval_dataset,
-                    batch_size=1,
-                    steps=math.ceil(training_args.num_iter/10)
-                )["logits"]
+                if args.warmup_for_dynamicshape:
+                    predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter)["logits"]
+                else:
+                    predictions = model.predict(
+                        tf_eval_dataset,
+                        batch_size=1,
+                        steps=math.ceil(training_args.num_iter/10)
+                    )["logits"]
                 elapsed = time.time()
                 predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter, callbacks=[keras_hook])["logits"]
                 elapsed = time.time() - elapsed
