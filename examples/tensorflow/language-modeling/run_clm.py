@@ -631,7 +631,7 @@ def main():
             keras_hook = ExampleHook(training_args.tensorboard)
             print("---- dataset length:", len(tf_eval_dataset))
             # warmup
-            if args.warmup_for_dynamicshape:
+            if training_args.warmup_for_dynamicshape:
                 eval_predictions = model.predict(
                     tf_eval_dataset,
                     steps=training_args.num_iter,

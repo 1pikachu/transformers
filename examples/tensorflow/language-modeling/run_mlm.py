@@ -616,7 +616,7 @@ def main():
         num_iter = min(num_iter, training_args.num_iter)
         keras_hook = ExampleHook(training_args.tensorboard)
         print("---- dataset length:", len(tf_eval_dataset))
-        if args.warmup_for_dynamicshape:
+        if training_args.warmup_for_dynamicshape:
             model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
         for i in range(training_args.epochs):
             start_time = time.time()

@@ -570,7 +570,7 @@ def main():
             print("---- dataset length:", len(tf_eval_dataset))
             try:
                 # warmup
-                if args.warmup_for_dynamicshape:
+                if training_args.warmup_for_dynamicshape:
                     predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter)["logits"]
                 else:
                     predictions = model.predict(
