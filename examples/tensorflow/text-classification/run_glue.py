@@ -539,8 +539,8 @@ def main():
                 raw_datasets = [datasets["validation_matched"], datasets["validation_mismatched"]]
             else:
                 tasks = [data_args.task_name]
-                tf_datasets = [tf_data["validation"]]
-                raw_datasets = [datasets["validation"]]
+                tf_datasets = [tf_data["train"]]
+                raw_datasets = [datasets["train"]]
 
             keras_hook = ExampleHook(training_args.tensorboard)
             for raw_dataset, tf_dataset, task in zip(raw_datasets, tf_datasets, tasks):

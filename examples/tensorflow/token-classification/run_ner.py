@@ -438,7 +438,7 @@ def main():
         ).with_options(dataset_options)
         total_eval_batch_size = training_args.per_device_eval_batch_size * num_replicas
         tf_eval_dataset = model.prepare_tf_dataset(
-            eval_dataset,
+            train_dataset,
             collate_fn=collate_fn,
             batch_size=total_eval_batch_size,
             shuffle=False,

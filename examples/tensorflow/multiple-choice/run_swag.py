@@ -547,7 +547,7 @@ def main():
             dataset_options.experimental_distribute.auto_shard_policy = tf.data.experimental.AutoShardPolicy.OFF
             # Do a standalone evaluation pass
             tf_eval_dataset = model.prepare_tf_dataset(
-                eval_dataset,
+                train_dataset,
                 shuffle=False,
                 batch_size=total_eval_batch_size,
                 collate_fn=data_collator,

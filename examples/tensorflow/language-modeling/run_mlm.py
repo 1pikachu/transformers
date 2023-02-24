@@ -537,7 +537,7 @@ def main():
         ).with_options(options)
 
         tf_eval_dataset = model.prepare_tf_dataset(
-            eval_dataset,
+            train_dataset,
             # labels are passed as input, as we will use the model's internal loss
             shuffle=False,
             batch_size=num_replicas * training_args.per_device_eval_batch_size,
@@ -612,12 +612,13 @@ def main():
 
         total_time = 0.0
         total_sample = 0
-        num_iter = int(len(tf_eval_dataset) / training_args.per_device_eval_batch_size)
+        num_iter = len(tf_eval_dataset)
         num_iter = min(num_iter, training_args.num_iter)
         keras_hook = ExampleHook(training_args.tensorboard)
         print("---- dataset length:", len(tf_eval_dataset))
         if training_args.warmup_for_dynamicshape:
             model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
+
         for i in range(training_args.epochs):
             start_time = time.time()
             model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size, callbacks=[keras_hook])
