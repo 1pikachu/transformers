@@ -242,6 +242,7 @@ class TFTrainingArguments(TrainingArguments):
                     tpu = None
 
             xpus = tf.config.list_physical_devices("XPU")
+            print("--------- gpus:{}, tpu:{}, xpus:{}".format(gpus, tpu, xpus))
             if tpu:
                 # Set to bfloat16 in case of TPU
                 if self.fp16:
