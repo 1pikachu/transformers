@@ -36,8 +36,8 @@ from itertools import chain
 from pathlib import Path
 from typing import Optional
 
-import datasets
 import tensorflow as tf
+import datasets
 from datasets import load_dataset
 from sklearn.model_selection import train_test_split
 

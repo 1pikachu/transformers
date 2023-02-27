@@ -29,8 +29,8 @@ from itertools import chain
 from pathlib import Path
 from typing import Optional, Union
 
-import datasets
 import tensorflow as tf
+import datasets
 from datasets import load_dataset
 
 import transformers

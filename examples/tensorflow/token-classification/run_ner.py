@@ -28,8 +28,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
-import datasets
 import tensorflow as tf
+import datasets
 from datasets import ClassLabel, load_dataset
 
 import evaluate
