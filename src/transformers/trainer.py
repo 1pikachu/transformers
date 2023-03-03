@@ -949,6 +949,8 @@ class Trainer:
         else:
             data_collator = self._get_collator_with_removed_columns(data_collator, description="evaluation")
 
+        print("----------- isinstance(eval_dataset, torch.utils.data.IterableDataset):{}".format(
+            isinstance(eval_dataset, torch.utils.data.IterableDataset)))
         if isinstance(eval_dataset, torch.utils.data.IterableDataset):
             if self.args.world_size > 1:
                 eval_dataset = IterableDatasetShard(
@@ -3376,7 +3378,6 @@ class Trainer:
         profile_len = min(len(dataloader), args.num_iters) // 2
 
         # warmup
-        shape_record = []
         if args.warmup_for_dynamicShape:
             for step, inputs in enumerate(dataloader):
                 if self.args.num_iters > 0 and step >= self.args.num_iters:
@@ -3391,8 +3392,6 @@ class Trainer:
                 print("--------input shape---------")
                 for i in inputs:
                     print("label:{}, shape:{}".format(i, inputs[i].shape))
-                    if i == "input_ids":
-                        shape_record.append(tuple(inputs[i].shape))
                 # Prediction step
                 inputs = {i : inputs[i].to(args.device) if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
@@ -3685,8 +3684,6 @@ class Trainer:
                 print("--------input shape---------")
                 for i in inputs:
                     print("label:{}, shape:{}".format(i, inputs[i].shape))
-                    if i == "input_ids" and tuple(inputs[i].shape) not in shape_record:
-                        raise ValueError("dynamicShape!!! check dataloader")
 
                 # Prediction step
                 tic = time.time()
