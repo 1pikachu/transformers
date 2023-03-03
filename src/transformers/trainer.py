@@ -3374,6 +3374,33 @@ class Trainer:
         total_time = 0.0
         total_data = 0
         profile_len = min(len(dataloader), args.num_iters) // 2
+
+        # warmup
+        shape_record = []
+        if args.warmup_for_dynamicShape:
+            for step, inputs in enumerate(dataloader):
+                if self.args.num_iters > 0 and step >= self.args.num_iters:
+                    break
+                # Update the observed num examples
+                observed_batch_size = find_batch_size(inputs)
+                if observed_batch_size is not None:
+                    observed_num_examples += observed_batch_size
+                    # For batch samplers, batch_size is not known by the dataloader in advance.
+                    if batch_size is None:
+                        batch_size = observed_batch_size
+                print("--------input shape---------")
+                for i in inputs:
+                    print("label:{}, shape:{}".format(i, inputs[i].shape))
+                    if i == "input_ids":
+                        shape_record.append(tuple(inputs[i].shape))
+                # Prediction step
+                inputs = {i : inputs[i].to(args.device) if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
+                if args.device == "cuda":
+                    torch.cuda.synchronize()
+                elif args.device == "xpu":
+                    torch.xpu.synchronize()
+
         # Main evaluation loop
         if args.profile and args.device == "xpu":
             for step, inputs in enumerate(dataloader):
@@ -3658,6 +3685,8 @@ class Trainer:
                 print("--------input shape---------")
                 for i in inputs:
                     print("label:{}, shape:{}".format(i, inputs[i].shape))
+                    if i == "input_ids" and tuple(inputs[i].shape) not in shape_record:
+                        raise ValueError("dynamicShape!!! check dataloader")
 
                 # Prediction step
                 tic = time.time()

@@ -525,6 +525,9 @@ class TrainingArguments:
     profile: bool = field(
         default=False, metadata={"help": "Collect timeline."}
     )
+    warmup_for_dynamicShape: bool = field(
+        default=False, metadata={"help": "warmup"}
+    )
     jit: bool = field(default=False, metadata={"help": "use torch jit"})
     nv_fuser: bool = field(default=False, metadata={"help": "use nv fuser"})
     precision: str = field(
