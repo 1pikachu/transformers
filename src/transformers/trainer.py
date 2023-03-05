@@ -3138,56 +3138,16 @@ class Trainer:
 
         args = self.args
         with torch.no_grad():
-            if args.precision == "float16" and args.device == "cuda":
-                print("---- Use autocast fp16 cuda")
-                with torch.cuda.amp.autocast(enabled=True, dtype=torch.float16):
-                    output = eval_loop(
-                        eval_dataloader,
-                        description="Evaluation",
-                        # No point gathering the predictions if there are no metrics, otherwise we defer to
-                        # self.args.prediction_loss_only
-                        prediction_loss_only=True if self.compute_metrics is None else None,
-                        ignore_keys=ignore_keys,
-                        metric_key_prefix=metric_key_prefix,
-                    )
-            elif args.precision == "float16" and args.device == "xpu":
-                print("---- Use autocast fp16 xpu")
-                with torch.xpu.amp.autocast(enabled=True, dtype=torch.float16, cache_enabled=True):
-                    output = eval_loop(
-                        eval_dataloader,
-                        description="Evaluation",
-                        # No point gathering the predictions if there are no metrics, otherwise we defer to
-                        # self.args.prediction_loss_only
-                        prediction_loss_only=True if self.compute_metrics is None else None,
-                        ignore_keys=ignore_keys,
-                        metric_key_prefix=metric_key_prefix,
-                    )
-            elif args.precision == "bfloat16" and args.device == "cpu":
-                print("---- Use autocast bf16 cpu")
-                with torch.cpu.amp.autocast(enabled=True, dtype=torch.bfloat16):
-                    output = eval_loop(
-                        eval_dataloader,
-                        description="Evaluation",
-                        # No point gathering the predictions if there are no metrics, otherwise we defer to
-                        # self.args.prediction_loss_only
-                        prediction_loss_only=True if self.compute_metrics is None else None,
-                        ignore_keys=ignore_keys,
-                        metric_key_prefix=metric_key_prefix,
-                    )
-            elif args.precision == "bfloat16" and args.device == "xpu":
-                print("---- Use autocast bf16 xpu")
-                with torch.xpu.amp.autocast(dtype=torch.bfloat16):
-                    output = eval_loop(
-                        eval_dataloader,
-                        description="Evaluation",
-                        # No point gathering the predictions if there are no metrics, otherwise we defer to
-                        # self.args.prediction_loss_only
-                        prediction_loss_only=True if self.compute_metrics is None else None,
-                        ignore_keys=ignore_keys,
-                        metric_key_prefix=metric_key_prefix,
-                    )
-            else:
-                print("---- no autocast")
+            amp_enable = True
+            if args.precision == "float16":
+                data_dtype = torch.float16
+            elif args.precision == "bfloat16":
+                data_dtype = torch.bfloat16
+            else
+                data_dtype = torch.float32
+                amp_enable = False
+            print("---- Use autocast {} {}".format(args.precision, args.device))
+            with torch.autocast(device_str=args.device, enabled=amp_enable, dtype=data_dtype):
                 output = eval_loop(
                     eval_dataloader,
                     description="Evaluation",
