@@ -3143,11 +3143,11 @@ class Trainer:
                 data_dtype = torch.float16
             elif args.precision == "bfloat16":
                 data_dtype = torch.bfloat16
-            else
+            else:
                 data_dtype = torch.float32
                 amp_enable = False
             print("---- Use autocast {} {}".format(args.precision, args.device))
-            with torch.autocast(device_str=args.device, enabled=amp_enable, dtype=data_dtype):
+            with torch.autocast(device_type=args.device, enabled=amp_enable, dtype=data_dtype):
                 output = eval_loop(
                     eval_dataloader,
                     description="Evaluation",
