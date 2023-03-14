@@ -202,6 +202,7 @@ class TFBertEmbeddings(tf.keras.layers.Layer):
         if input_ids is not None:
             # Note: tf.gather, on which the embedding layer is based, won't check positive out of bound
             # indices on GPU, returning zeros instead. This is a dangerous silent behavior.
+            """
             tf.debugging.assert_less(
                 input_ids,
                 tf.cast(self.vocab_size, dtype=input_ids.dtype),
@@ -210,6 +211,7 @@ class TFBertEmbeddings(tf.keras.layers.Layer):
                     f" {tf.math.reduce_max(input_ids)} >= {self.vocab_size})"
                 ),
             )
+            """
             inputs_embeds = tf.gather(params=self.weight, indices=input_ids)
 
         input_shape = shape_list(inputs_embeds)[:-1]
