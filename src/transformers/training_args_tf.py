@@ -210,7 +210,7 @@ class TFTrainingArguments(TrainingArguments):
         default="xpu",
         metadata={"help": "device"},
     )
-    warmup_for_dynamicshape: bool = field(
+    warmup_for_dynamicShape: bool = field(
         default=False, metadata={"help": "dynamicShape warmup"}
     )
 

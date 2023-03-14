@@ -28,8 +28,8 @@ import random
 from dataclasses import dataclass, field
 from typing import Optional
 
-import tensorflow as tf
 import datasets
+import tensorflow as tf
 from datasets import ClassLabel, load_dataset
 
 import evaluate
@@ -570,7 +570,7 @@ def main():
             print("---- dataset length:", len(tf_eval_dataset))
             try:
                 # warmup
-                if training_args.warmup_for_dynamicshape:
+                if training_args.warmup_for_dynamicShape:
                     predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter)["logits"]
                 else:
                     predictions = model.predict(
