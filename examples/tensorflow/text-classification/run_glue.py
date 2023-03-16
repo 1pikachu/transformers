@@ -417,6 +417,7 @@ def main():
             "test_mismatched": data_args.max_predict_samples,
             "user_data": None,
         }
+        training_args.per_device_train_batch_size = training_args.per_device_eval_batch_size
         for key in datasets.keys():
             if key == "train" or key.startswith("validation"):
                 assert "label" in datasets[key].features, f"Missing labels from {key} data!"
@@ -430,6 +431,16 @@ def main():
             dataset = datasets[key]
             if samples_limit is not None:
                 dataset = dataset.select(range(samples_limit))
+
+            print("###### old dataset len:", len(dataset))
+            from datasets import concatenate_datasets
+            old_len = len(dataset)
+            tgt_len = training_args.num_iter * training_args.per_device_eval_batch_size
+            tmp_ds = dataset
+            while len(tmp_ds) < tgt_len:
+                tmp_ds = concatenate_datasets([tmp_ds, dataset])
+            dataset = tmp_ds
+            print("###### new dataset len:", len(dataset))
 
             # model.prepare_tf_dataset() wraps a Hugging Face dataset in a tf.data.Dataset which is ready to use in
             # training. This is the recommended way to use a Hugging Face dataset when training with Keras. You can also
