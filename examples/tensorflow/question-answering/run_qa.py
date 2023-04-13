@@ -248,22 +248,6 @@ def main():
     else:
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
-    if training_args.precision != 'tfloat32':
-        tf.config.experimental.enable_tensor_float_32_execution(False)
-    if training_args.precision == 'float16' and training_args.device_str == 'cuda':
-        from tensorflow.keras import mixed_precision
-        policy = mixed_precision.Policy('mixed_float16')
-        mixed_precision.set_global_policy(policy)
-
-        from tensorflow.keras import layers
-        num_units = 64
-        dense1 = layers.Dense(num_units, activation='relu', name='dense_1')
-        print(dense1.dtype_policy)
-    if training_args.profile:
-        # timeline
-        import pathlib
-        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/' + str(os.getpid())
-
     # Sending telemetry. Tracking the example usage helps us better allocate resources to maintain them. The
     # information sent is the one passed as arguments along with your Python/PyTorch versions.
     send_example_telemetry("run_qa", model_args, data_args, framework="tensorflow")
@@ -743,12 +727,16 @@ def main():
 
         # region Training and Evaluation
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_train:
             # Note that the validation and test datasets have been processed in a different way to the
             # training datasets in this example, and so they don't have the same label structure.
             # As such, we don't pass them directly to Keras, but instead get model predictions to evaluate
             # after training.
-            model.fit(training_dataset, epochs=int(training_args.num_train_epochs), callbacks=callbacks)
+            callbacks.append(keras_hook)
+            model.fit(training_dataset, epochs=training_args.epochs, steps_per_epoch=training_args.num_iter, callbacks=callbacks)
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
 
         if training_args.do_eval:
             logger.info("*** Evaluation ***")
@@ -760,7 +748,6 @@ def main():
             if training_args.num_iter is not None and training_args.num_iter > len(eval_dataset):
                 training_args.num_iter = len(eval_dataset)
 
-            keras_hook = ExampleHook(training_args.tensorboard)
             print("---- dataset length:", len(eval_dataset))
             # warmup
             if training_args.warmup_for_dynamicShape:
