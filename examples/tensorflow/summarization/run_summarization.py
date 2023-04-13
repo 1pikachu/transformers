@@ -50,6 +50,10 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, is_offline_mode, send_example_telemetry
 from transformers.utils.versions import require_version
 
+import time
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
+
 
 # region Checking dependencies
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -453,44 +457,38 @@ def main():
         model_inputs["labels"] = labels["input_ids"]
         return model_inputs
 
-    if training_args.do_train:
-        if "train" not in raw_datasets:
-            raise ValueError("--do_train requires a train dataset")
-        train_dataset = raw_datasets["train"]
-        if data_args.max_train_samples is not None:
-            max_train_samples = min(len(train_dataset), data_args.max_train_samples)
-            train_dataset = train_dataset.select(range(max_train_samples))
-        with training_args.main_process_first(desc="train dataset map pre-processing"):
-            train_dataset = train_dataset.map(
-                preprocess_function,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on train dataset",
-            )
-    else:
-        train_dataset = None
+    if "train" not in raw_datasets:
+        raise ValueError("--do_train requires a train dataset")
+    train_dataset = raw_datasets["train"]
+    if data_args.max_train_samples is not None:
+        max_train_samples = min(len(train_dataset), data_args.max_train_samples)
+        train_dataset = train_dataset.select(range(max_train_samples))
+    with training_args.main_process_first(desc="train dataset map pre-processing"):
+        train_dataset = train_dataset.map(
+            preprocess_function,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
+            desc="Running tokenizer on train dataset",
+        )
 
-    if training_args.do_eval:
-        max_target_length = data_args.val_max_target_length
-        if "validation" not in raw_datasets:
-            raise ValueError("--do_eval requires a validation dataset")
-        eval_dataset = raw_datasets["validation"]
-        if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
-        with training_args.main_process_first(desc="validation dataset map pre-processing"):
-            eval_dataset = eval_dataset.map(
-                preprocess_function,
-                batched=True,
-                num_proc=data_args.preprocessing_num_workers,
-                remove_columns=column_names,
-                load_from_cache_file=not data_args.overwrite_cache,
-                desc="Running tokenizer on validation dataset",
-            )
-    else:
-        eval_dataset = None
+    max_target_length = data_args.val_max_target_length
+    if "validation" not in raw_datasets:
+        raise ValueError("--do_eval requires a validation dataset")
+    eval_dataset = raw_datasets["validation"]
+    if data_args.max_eval_samples is not None:
+        max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+        eval_dataset = eval_dataset.select(range(max_eval_samples))
+    with training_args.main_process_first(desc="validation dataset map pre-processing"):
+        eval_dataset = eval_dataset.map(
+            preprocess_function,
+            batched=True,
+            num_proc=data_args.preprocessing_num_workers,
+            remove_columns=column_names,
+            load_from_cache_file=not data_args.overwrite_cache,
+            desc="Running tokenizer on validation dataset",
+        )
     # endregion
 
     # region Text preprocessing
@@ -570,20 +568,16 @@ def main():
             num_warmup_steps = int(num_train_steps * training_args.warmup_ratio)
         else:
             num_warmup_steps = 0
-        if training_args.do_train:
-            optimizer, lr_schedule = create_optimizer(
-                init_lr=training_args.learning_rate,
-                num_train_steps=num_train_steps,
-                num_warmup_steps=num_warmup_steps,
-                adam_beta1=training_args.adam_beta1,
-                adam_beta2=training_args.adam_beta2,
-                adam_epsilon=training_args.adam_epsilon,
-                weight_decay_rate=training_args.weight_decay,
-                adam_global_clipnorm=training_args.max_grad_norm,
-            )
-        else:
-            optimizer = None
-
+        optimizer, lr_schedule = create_optimizer(
+            init_lr=training_args.learning_rate,
+            num_train_steps=num_train_steps,
+            num_warmup_steps=num_warmup_steps,
+            adam_beta1=training_args.adam_beta1,
+            adam_beta2=training_args.adam_beta2,
+            adam_epsilon=training_args.adam_epsilon,
+            weight_decay_rate=training_args.weight_decay,
+            adam_global_clipnorm=training_args.max_grad_norm,
+        )
         # endregion
 
         # region Metric and KerasMetricCallback
@@ -662,6 +656,8 @@ def main():
             )
         # endregion
 
+        keras_hook = ExampleHook(training_args.tensorboard)
+        callbacks.append(keras_hook)
         # region Training
         model.compile(optimizer=optimizer, jit_compile=training_args.xla)
         eval_metrics = None
@@ -678,8 +674,12 @@ def main():
                     "XLA training may be slow at first when --pad_to_max_length is not set "
                     "until all possible shapes have been compiled."
                 )
-            history = model.fit(tf_train_dataset, epochs=int(training_args.num_train_epochs), callbacks=callbacks)
+            #history = model.fit(tf_train_dataset, epochs=int(training_args.num_train_epochs), callbacks=callbacks)
+            history = model.fit(tf_train_dataset, epochs=training_args.epochs, steps_per_epoch=training_args.num_iter, callbacks=callbacks)
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
             eval_metrics = {key: val[-1] for key, val in history.history.items()}
+            exit()
         # endregion
 
         # region Validation
@@ -693,17 +693,32 @@ def main():
             def generate(**kwargs):
                 return model.generate(**kwargs)
 
+            #TODO: eval failed, need check
+            print("---- dataset length:", len(tf_eval_dataset))
+            training_args.num_iter = min(len(tf_eval_dataset), training_args.num_iter)
+            total_time = 0.0
+            total_count = 0
+            warmup_iter = training_args.num_iter // 3
             for batch, labels in tf_eval_dataset:
+                if total_count >= training_args.num_iter:
+                    break
                 batch.update(gen_kwargs)
+                elapsed = time.time()
                 generated_tokens = generate(**batch)
                 if isinstance(generated_tokens, tuple):
                     generated_tokens = generated_tokens[0]
                 decoded_preds = tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
                 labels = np.where(labels != -100, labels, tokenizer.pad_token_id)
                 decoded_labels = tokenizer.batch_decode(labels, skip_special_tokens=True)
+                elapsed = time.time() - elapsed
+                if total_count >= warmup_iter:
+                    total_time += elapsed
+                print("Iteration: {}, inference time: {}".format(total_count, elapsed), flush=True)
                 decoded_preds, decoded_labels = postprocess_text(decoded_preds, decoded_labels)
-
                 metric.add_batch(predictions=decoded_preds, references=decoded_labels)
+            throughput = (training_args.num_iter - warmup_iter) * training_args.per_device_eval_batch_size / elapsed
+            print("inference Throughput: {} samples/s".format(throughput))
+            exit()
 
             eval_metrics = metric.compute(use_stemmer=True)
 
