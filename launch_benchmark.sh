@@ -10,7 +10,7 @@ function main {
 
     # requirements
     pip uninstall h5py -y
-    pip install evaluate datasets h5py==3.7.0 seqeval==1.2.2
+    pip install -r requirements.txt
     pip uninstall transformers -y
     pip install -e .
 
