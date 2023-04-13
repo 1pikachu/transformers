@@ -222,8 +222,11 @@ class TFTrainingArguments(TrainingArguments):
         gpus = tf.config.list_physical_devices("GPU")
 
         # Set to float16 at first
-        if self.fp16:
+        if self.precision == "float16" and self.device_str == "cuda":
             tf.keras.mixed_precision.set_global_policy("mixed_float16")
+            print("---- keras mix float16")
+        if self.precision != "tfloat32":
+            tf.config.experimental.enable_tensor_float_32_execution(False)
 
         if self.no_cuda:
             strategy = tf.distribute.OneDeviceStrategy(device="/cpu:0")
