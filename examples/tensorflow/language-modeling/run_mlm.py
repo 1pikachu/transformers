@@ -254,22 +254,6 @@ def main():
         data_args.pad_to_max_length = True
     # endregion
 
-    if training_args.precision != 'tfloat32':
-        tf.config.experimental.enable_tensor_float_32_execution(False)
-    if training_args.precision == 'float16' and training_args.device_str == 'cuda':
-        from tensorflow.keras import mixed_precision
-        policy = mixed_precision.Policy('mixed_float16')
-        mixed_precision.set_global_policy(policy)
-
-        from tensorflow.keras import layers
-        num_units = 64
-        dense1 = layers.Dense(num_units, activation='relu', name='dense_1')
-        print(dense1.dtype_policy)
-    if training_args.profile:
-        # timeline
-        import pathlib
-        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/' + str(os.getpid())
-
     # region Checkpoints
     # Detecting last checkpoint.
     checkpoint = None
@@ -318,6 +302,7 @@ def main():
             data_args.dataset_config_name,
             use_auth_token=True if model_args.use_auth_token else None,
         )
+        import pdb;pdb.set_trace()
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
@@ -604,50 +589,55 @@ def main():
             callbacks = []
         # endregion
 
-        # region Training and validation
-        print("***** Running Evaluate *****")
-        print(f"  Num examples = {len(tf_eval_dataset)}")
-        print(f"  Num Epochs = {training_args.epochs}")
-        print(f"  Instantaneous batch size per device = {training_args.per_device_eval_batch_size}")
-
-        total_time = 0.0
-        total_sample = 0
-        num_iter = len(tf_eval_dataset)
-        num_iter = min(num_iter, training_args.num_iter)
         keras_hook = ExampleHook(training_args.tensorboard)
-        print("---- dataset length:", len(tf_eval_dataset))
-        if training_args.warmup_for_dynamicShape:
-            model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
+        # region Training and validation
+        if training_args.do_eval:
+            print("***** Running Evaluate *****")
+            print(f"  Num examples = {len(tf_eval_dataset)}")
+            print(f"  Num Epochs = {training_args.epochs}")
+            print(f"  Instantaneous batch size per device = {training_args.per_device_eval_batch_size}")
 
-        for i in range(training_args.epochs):
-            start_time = time.time()
-            model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size, callbacks=[keras_hook])
-            end_time = time.time()
-            if i >= training_args.num_warmup:
-                total_time += end_time - start_time
-                total_sample += num_iter * training_args.per_device_eval_batch_size
-        latency = total_time / total_sample * 1000
-        throughput = total_sample / total_time
-        print("### Latency:: {:.2f} ms".format(latency))
-        print("### inference Throughput: {:.3f} samples/s".format(throughput))
+            total_time = 0.0
+            total_sample = 0
+            num_iter = len(tf_eval_dataset)
+            num_iter = min(num_iter, training_args.num_iter)
+            print("---- dataset length:", len(tf_eval_dataset))
+            if training_args.warmup_for_dynamicShape:
+                model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size)
 
-        # For long training runs, you may wish to use the PushToHub() callback here to save intermediate checkpoints
-        # to the Hugging Face Hub rather than just pushing the finished model.
-        # See https://huggingface.co/docs/transformers/main_classes/keras_callbacks#transformers.PushToHubCallback
+            for i in range(training_args.epochs):
+                start_time = time.time()
+                model.evaluate(tf_eval_dataset, steps=num_iter, batch_size=training_args.per_device_eval_batch_size, callbacks=[keras_hook])
+                end_time = time.time()
+                if i >= training_args.num_warmup:
+                    total_time += end_time - start_time
+                    total_sample += num_iter * training_args.per_device_eval_batch_size
+            latency = total_time / total_sample * 1000
+            throughput = total_sample / total_time
+            print("### Latency:: {:.2f} ms".format(latency))
+            print("### inference Throughput: {:.3f} samples/s".format(throughput))
+        elif training_args.do_train:
+            # For long training runs, you may wish to use the PushToHub() callback here to save intermediate checkpoints
+            # to the Hugging Face Hub rather than just pushing the finished model.
+            # See https://huggingface.co/docs/transformers/main_classes/keras_callbacks#transformers.PushToHubCallback
 
-        #history = model.fit(
-        #    tf_train_dataset,
-        #    validation_data=tf_eval_dataset,
-        #    epochs=int(training_args.num_train_epochs),
-        #    callbacks=callbacks,
-        #)
-        #train_loss = history.history["loss"][-1]
-        #try:
-        #    train_perplexity = math.exp(train_loss)
-        #except OverflowError:
-        #    train_perplexity = math.inf
-        #logger.info(f"  Final train loss: {train_loss:.3f}")
-        #logger.info(f"  Final train perplexity: {train_perplexity:.3f}")
+            callbacks.append(keras_hook)
+            history = model.fit(
+                tf_train_dataset,
+                validation_data=tf_eval_dataset,
+                epochs=training_args.epochs,
+                steps_per_epoch=training_args.num_iter,
+                callbacks=callbacks,
+            )
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
+            train_loss = history.history["loss"][-1]
+            try:
+                train_perplexity = math.exp(train_loss)
+            except OverflowError:
+                train_perplexity = math.inf
+            logger.info(f"  Final train loss: {train_loss:.3f}")
+            logger.info(f"  Final train perplexity: {train_perplexity:.3f}")
 
     #validation_loss = history.history["val_loss"][-1]
     #try:
