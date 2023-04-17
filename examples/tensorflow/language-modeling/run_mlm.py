@@ -302,7 +302,6 @@ def main():
             data_args.dataset_config_name,
             use_auth_token=True if model_args.use_auth_token else None,
         )
-        import pdb;pdb.set_trace()
         if "validation" not in raw_datasets.keys():
             raw_datasets["validation"] = load_dataset(
                 data_args.dataset_name,
