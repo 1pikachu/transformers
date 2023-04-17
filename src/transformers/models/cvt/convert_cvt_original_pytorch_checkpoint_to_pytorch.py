@@ -22,8 +22,8 @@ import json
 from collections import OrderedDict
 
 import torch
-
 from huggingface_hub import cached_download, hf_hub_url
+
 from transformers import AutoFeatureExtractor, CvtConfig, CvtForImageClassification
 
 
@@ -308,7 +308,7 @@ def convert_cvt_checkpoint(cvt_model, image_size, cvt_file_name, pytorch_dump_fo
 
     model = CvtForImageClassification(config)
     feature_extractor = AutoFeatureExtractor.from_pretrained("facebook/convnext-base-224-22k-1k")
-    feature_extractor.size = image_size
+    feature_extractor.size["shortest_edge"] = image_size
     original_weights = torch.load(cvt_file_name, map_location=torch.device("cpu"))
 
     huggingface_weights = OrderedDict()

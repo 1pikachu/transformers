@@ -54,7 +54,7 @@ sys.path.append(os.getcwd())
 from hooks import ExampleHook
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
-check_min_version("4.24.0.dev0")
+check_min_version("4.28.0")
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +109,7 @@ class DataCollatorForMultipleChoice:
             padding=self.padding,
             max_length=self.max_length,
             pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors="tf",
+            return_tensors="np",
         )
 
         # Un-flatten
@@ -120,6 +120,7 @@ class DataCollatorForMultipleChoice:
 
 
 # endregion
+
 
 # region Arguments
 @dataclass
@@ -430,7 +431,7 @@ def main():
             )
 
     if data_args.pad_to_max_length:
-        data_collator = DefaultDataCollator(return_tensors="tf")
+        data_collator = DefaultDataCollator(return_tensors="np")
     else:
         # custom class defined above, as HF has no data collator for multiple choice
         data_collator = DataCollatorForMultipleChoice(tokenizer)
@@ -489,9 +490,8 @@ def main():
             callbacks = [
                 PushToHubCallback(
                     output_dir=training_args.output_dir,
-                    model_id=push_to_hub_model_id,
-                    organization=training_args.push_to_hub_organization,
-                    token=training_args.push_to_hub_token,
+                    hub_model_id=push_to_hub_model_id,
+                    hub_token=training_args.push_to_hub_token,
                     tokenizer=tokenizer,
                     **model_card_kwargs,
                 )

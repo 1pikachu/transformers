@@ -34,6 +34,14 @@ cd transformers
 pip install -e ".[dev]"
 ```
 
+Depending on your OS, and since the number of optional dependencies of Transformers is growing, you might get a
+failure with this command. If that's the case make sure to install the Deep Learning framework you are working with
+(PyTorch, TensorFlow and/or Flax) then do:
+
+```bash
+pip install -e ".[quality]"
+```
+
 Once the installation is done, you can use the CLI command `add-new-model` to generate your models:
 
 ```shell script
@@ -133,6 +141,14 @@ cd transformers
 pip install -e ".[dev]"
 ```
 
+Depending on your OS, and since the number of optional dependencies of Transformers is growing, you might get a
+failure with this command. If that's the case make sure to install the Deep Learning framework you are working with
+(PyTorch, TensorFlow and/or Flax) then do:
+
+```bash
+pip install -e ".[quality]"
+```
+
 Once the installation is done, you can use the CLI command `add-new-model-like` to generate your models:
 
 ```shell script
@@ -186,14 +202,14 @@ wish, as it will appear on the Model Hub. Do not forget to include the organisat
 Then you will have to say whether your model re-uses the same processing classes as the model you're cloning:
 
 ```
-Will your new model use the same processing class as Xxx (XxxTokenizer/XxxFeatureExtractor)
+Will your new model use the same processing class as Xxx (XxxTokenizer/XxxFeatureExtractor/XxxImageProcessor)
 ```
 
 Answer yes if you have no intentions to make any change to the class used for preprocessing. It can use different
 files (for instance you can reuse the `BertTokenizer` with a new vocab file).
 
 If you answer no, you will have to give the name of the classes
-for the new tokenizer/feature extractor/processor (depending on the model you're cloning).
+for the new tokenizer/image processor/feature extractor/processor (depending on the model you're cloning).
 
 Next the questionnaire will ask
 
