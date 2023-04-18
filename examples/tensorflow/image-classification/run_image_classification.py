@@ -50,6 +50,8 @@ from transformers.trainer_utils import get_last_checkpoint, is_main_process
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
 
 logger = logging.getLogger(__name__)
 
@@ -530,13 +532,17 @@ def main():
                 )
             )
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_train:
+            callbacks.append(keras_hook)
             model.fit(
                 train_dataset,
                 validation_data=eval_dataset,
                 epochs=int(training_args.num_train_epochs),
                 callbacks=callbacks,
             )
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
 
         if training_args.do_eval:
             n_eval_batches = len(eval_dataset)

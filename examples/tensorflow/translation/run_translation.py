@@ -53,6 +53,8 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 
+sys.path.append(os.getcwd())
+from hooks import ExampleHook
 
 # region Dependencies and constants
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -645,6 +647,7 @@ def main():
         eval_metrics = None
         model.compile(optimizer=optimizer, jit_compile=training_args.xla)
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_train:
             logger.info("***** Running training *****")
             logger.info(f"  Num examples = {len(train_dataset)}")
@@ -658,8 +661,10 @@ def main():
                     "XLA training may be slow at first when --pad_to_max_length is not set "
                     "until all possible shapes have been compiled."
                 )
-
+            callbacks.append(keras_hook)
             history = model.fit(tf_train_dataset, epochs=int(training_args.num_train_epochs), callbacks=callbacks)
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
             eval_metrics = {key: val[-1] for key, val in history.history.items()}
         # endregion
 

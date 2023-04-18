@@ -593,6 +593,7 @@ def main():
             callbacks = []
         # endregion
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_train:
             # region Training and validation
             logger.info("***** Running training *****")
@@ -605,12 +606,15 @@ def main():
             # to the Hugging Face Hub rather than just pushing the finished model.
             # See https://huggingface.co/docs/transformers/main_classes/keras_callbacks#transformers.PushToHubCallback
 
+            callbacks.append(keras_hook)
             history = model.fit(
                 tf_train_dataset,
                 validation_data=tf_eval_dataset,
                 epochs=int(training_args.num_train_epochs),
                 callbacks=callbacks,
             )
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
             train_loss = history.history["loss"][-1]
             try:
                 train_perplexity = math.exp(train_loss)
@@ -639,7 +643,6 @@ def main():
         if training_args.do_eval:
             if training_args.num_iter is not None and training_args.num_iter > len(tf_eval_dataset):
                 training_args.num_iter = len(tf_eval_dataset)
-            keras_hook = ExampleHook(training_args.tensorboard)
             print("---- dataset length:", len(tf_eval_dataset))
             # warmup
             if training_args.warmup_for_dynamicShape:

@@ -513,6 +513,7 @@ def main():
             callbacks = []
         # endregion
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         # region Training and validation
         if training_args.do_train:
             if training_args.do_eval and not data_args.task_name == "mnli":
@@ -521,12 +522,15 @@ def main():
                 validation_data = tf_data["validation"]
             else:
                 validation_data = None
+            callbacks.append(keras_hook)
             model.fit(
                 tf_data["train"],
                 validation_data=validation_data,
                 epochs=int(training_args.num_train_epochs),
                 callbacks=callbacks,
             )
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
         # endregion
 
         # region Evaluation
@@ -552,7 +556,6 @@ def main():
                 tf_datasets = [tf_data["train"]]
                 raw_datasets = [datasets["train"]]
 
-            keras_hook = ExampleHook(training_args.tensorboard)
             for raw_dataset, tf_dataset, task in zip(raw_datasets, tf_datasets, tasks):
                 if training_args.num_iter is not None and training_args.num_iter > len(tf_dataset):
                     training_args.num_iter = len(tf_dataset)
