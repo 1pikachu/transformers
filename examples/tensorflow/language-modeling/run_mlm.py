@@ -634,7 +634,7 @@ def main():
             callbacks.append(keras_hook)
             history = model.fit(
                 tf_train_dataset,
-                validation_data=tf_eval_dataset,
+                #validation_data=tf_eval_dataset,
                 epochs=training_args.epochs,
                 steps_per_epoch=training_args.num_iter,
                 callbacks=callbacks,
