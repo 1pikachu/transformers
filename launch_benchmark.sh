@@ -30,9 +30,11 @@ function main {
 	    if [[ ${mode_name} == "train" ]];then
                 perf_mode=" --do_train "
                 perf_mode+=" --per_device_train_batch_size ${batch_size} "
+                epochs=1
             else # realtime
                 perf_mode=" --do_eval "
                 perf_mode+=" --per_device_eval_batch_size ${batch_size} "
+                epochs=3
             fi
             generate_core
             # launch
@@ -67,7 +69,7 @@ function generate_core {
 	    python examples/${framework}/$(echo ${EXAMPLE_ARGS}) \
                 ${perf_mode} \
 		--output_dir /tmp/tmp0 --overwrite_output_dir \
-		--epochs 3 --num_iter ${num_iter} --num_warmup 1 \
+		--epochs ${epochs} --num_iter ${num_iter} --num_warmup 1 \
 		--precision ${precision} --device_str ${device} \
                 ${addtion_options} \
         > ${log_file} 2>&1 &  \n" |tee -a ${excute_cmd_file}

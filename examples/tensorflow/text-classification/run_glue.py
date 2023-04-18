@@ -527,6 +527,7 @@ def main():
                 tf_data["train"],
                 validation_data=validation_data,
                 epochs=int(training_args.num_train_epochs),
+                steps_per_epoch=training_args.num_iter,
                 callbacks=callbacks,
             )
             throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time

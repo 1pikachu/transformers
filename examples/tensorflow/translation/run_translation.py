@@ -662,7 +662,7 @@ def main():
                     "until all possible shapes have been compiled."
                 )
             callbacks.append(keras_hook)
-            history = model.fit(tf_train_dataset, epochs=int(training_args.num_train_epochs), callbacks=callbacks)
+            history = model.fit(tf_train_dataset, epochs=int(training_args.num_train_epochs), steps_per_epoch=training_args.num_iter, callbacks=callbacks)
             throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
             print("training Throughput: {} samples/s".format(throughput))
             eval_metrics = {key: val[-1] for key, val in history.history.items()}
