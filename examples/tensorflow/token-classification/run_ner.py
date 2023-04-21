@@ -552,6 +552,7 @@ def main():
             callbacks = []
         # endregion
 
+        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_train:
             # region Training
             logger.info("***** Running training *****")
@@ -561,12 +562,17 @@ def main():
             logger.info(f"  Total train batch size = {total_train_batch_size}")
             # Only show the progress bar once on each machine.
 
+            callbacks.append(keras_hook)
             model.fit(
                 tf_train_dataset,
-                validation_data=tf_eval_dataset,
+                #validation_data=tf_eval_dataset,
                 epochs=int(training_args.num_train_epochs),
+                steps_per_epoch=training_args.num_iter,
                 callbacks=callbacks,
             )
+            throughput = keras_hook.train_batch * training_args.per_device_train_batch_size / keras_hook.train_total_time
+            print("training Throughput: {} samples/s".format(throughput))
+            sys.exit()
         # endregion
 
         # region Predictions
@@ -574,7 +580,6 @@ def main():
         # this bit might fail on TF < 2.8 because TF can't concatenate outputs of varying seq
         # length from predict().
 
-        keras_hook = ExampleHook(training_args.tensorboard)
         if training_args.do_eval:
             if training_args.num_iter is not None and training_args.num_iter > len(tf_eval_dataset):
                 training_args.num_iter = len(tf_eval_dataset)
