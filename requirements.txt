@@ -5,3 +5,4 @@ datasets
 h5py==3.7.0
 seqeval==1.2.2
 sacremoses==0.0.53
+sentencepiece==0.1.97
