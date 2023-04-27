@@ -175,6 +175,8 @@ class EncoderDecoderModel(PreTrainedModel):
     """
     config_class = EncoderDecoderConfig
     base_model_prefix = "encoder_decoder"
+    main_input_name = "input_ids"
+    supports_gradient_checkpointing = True
 
     def __init__(
         self,
@@ -254,6 +256,11 @@ class EncoderDecoderModel(PreTrainedModel):
             self._tie_encoder_decoder_weights(
                 self.encoder, self.decoder._modules[decoder_base_model_prefix], self.decoder.base_model_prefix
             )
+
+    def _set_gradient_checkpointing(self, module, value=False):
+        # call both encoder and decoder function on gradient checkpointing
+        self.encoder._set_gradient_checkpointing(module, value=value)
+        self.decoder._set_gradient_checkpointing(module, value=value)
 
     def get_encoder(self):
         return self.encoder
@@ -377,7 +384,7 @@ class EncoderDecoderModel(PreTrainedModel):
         encoder_pretrained_model_name_or_path: str = None,
         decoder_pretrained_model_name_or_path: str = None,
         *model_args,
-        **kwargs
+        **kwargs,
     ) -> PreTrainedModel:
         r"""
         Instantiate an encoder and a decoder from one or two base classes of the library from pretrained model
@@ -561,7 +568,7 @@ class EncoderDecoderModel(PreTrainedModel):
 
         >>> input_ids = tokenizer("This is a really long text", return_tensors="pt").input_ids
         >>> labels = tokenizer("This is the corresponding summary", return_tensors="pt").input_ids
-        >>> outputs = model(input_ids=input_ids, labels=input_ids)
+        >>> outputs = model(input_ids=input_ids, labels=labels)
         >>> loss, logits = outputs.loss, outputs.logits
 
         >>> # save and load from pretrained
@@ -651,9 +658,9 @@ class EncoderDecoderModel(PreTrainedModel):
         return shift_tokens_right(labels, self.config.pad_token_id, self.config.decoder_start_token_id)
 
     def prepare_inputs_for_generation(
-        self, input_ids, past=None, attention_mask=None, use_cache=None, encoder_outputs=None, **kwargs
+        self, input_ids, past_key_values=None, attention_mask=None, use_cache=None, encoder_outputs=None, **kwargs
     ):
-        decoder_inputs = self.decoder.prepare_inputs_for_generation(input_ids, past=past)
+        decoder_inputs = self.decoder.prepare_inputs_for_generation(input_ids, past_key_values=past_key_values)
         decoder_attention_mask = decoder_inputs["attention_mask"] if "attention_mask" in decoder_inputs else None
         input_dict = {
             "attention_mask": attention_mask,
@@ -672,6 +679,6 @@ class EncoderDecoderModel(PreTrainedModel):
             " model.decoder.resize_token_embeddings(...))"
         )
 
-    def _reorder_cache(self, past, beam_idx):
+    def _reorder_cache(self, past_key_values, beam_idx):
         # apply decoder cache reordering here
-        return self.decoder._reorder_cache(past, beam_idx)
+        return self.decoder._reorder_cache(past_key_values, beam_idx)

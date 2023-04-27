@@ -23,15 +23,21 @@ from transformers import ConditionalDetrConfig, is_timm_available, is_vision_ava
 from transformers.testing_utils import require_timm, require_vision, slow, torch_device
 from transformers.utils import cached_property
 
-from ...generation.test_generation_utils import GenerationTesterMixin
+from ...generation.test_utils import GenerationTesterMixin
 from ...test_configuration_common import ConfigTester
 from ...test_modeling_common import ModelTesterMixin, _config_zero_init, floats_tensor
+from ...test_pipeline_mixin import PipelineTesterMixin
 
 
 if is_timm_available():
     import torch
 
-    from transformers import ConditionalDetrForObjectDetection, ConditionalDetrForSegmentation, ConditionalDetrModel
+    from transformers import (
+        ConditionalDetrForObjectDetection,
+        ConditionalDetrForSegmentation,
+        ConditionalDetrModel,
+        ResNetConfig,
+    )
 
 
 if is_vision_available():
@@ -153,9 +159,28 @@ class ConditionalDetrModelTester:
         self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_queries, self.num_labels))
         self.parent.assertEqual(result.pred_boxes.shape, (self.batch_size, self.num_queries, 4))
 
+    def create_and_check_no_timm_backbone(self, config, pixel_values, pixel_mask, labels):
+        config.use_timm_backbone = False
+        config.backbone_config = ResNetConfig()
+        model = ConditionalDetrForObjectDetection(config=config)
+        model.to(torch_device)
+        model.eval()
+
+        result = model(pixel_values=pixel_values, pixel_mask=pixel_mask)
+        result = model(pixel_values)
+
+        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_queries, self.num_labels))
+        self.parent.assertEqual(result.pred_boxes.shape, (self.batch_size, self.num_queries, 4))
+
+        result = model(pixel_values=pixel_values, pixel_mask=pixel_mask, labels=labels)
+
+        self.parent.assertEqual(result.loss.shape, ())
+        self.parent.assertEqual(result.logits.shape, (self.batch_size, self.num_queries, self.num_labels))
+        self.parent.assertEqual(result.pred_boxes.shape, (self.batch_size, self.num_queries, 4))
+
 
 @require_timm
-class ConditionalDetrModelTest(ModelTesterMixin, GenerationTesterMixin, unittest.TestCase):
+class ConditionalDetrModelTest(ModelTesterMixin, GenerationTesterMixin, PipelineTesterMixin, unittest.TestCase):
     all_model_classes = (
         (
             ConditionalDetrModel,
@@ -164,6 +189,11 @@ class ConditionalDetrModelTest(ModelTesterMixin, GenerationTesterMixin, unittest
         )
         if is_timm_available()
         else ()
+    )
+    pipeline_model_mapping = (
+        {"feature-extraction": ConditionalDetrModel, "object-detection": ConditionalDetrForObjectDetection}
+        if is_timm_available()
+        else {}
     )
     is_encoder_decoder = True
     test_torchscript = False
@@ -212,6 +242,15 @@ class ConditionalDetrModelTest(ModelTesterMixin, GenerationTesterMixin, unittest
     def test_conditional_detr_object_detection_head_model(self):
         config_and_inputs = self.model_tester.prepare_config_and_inputs()
         self.model_tester.create_and_check_conditional_detr_object_detection_head_model(*config_and_inputs)
+
+    def test_conditional_detr_no_timm_backbone(self):
+        config_and_inputs = self.model_tester.prepare_config_and_inputs()
+        self.model_tester.create_and_check_no_timm_backbone(*config_and_inputs)
+
+    # TODO: check if this works again for PyTorch 2.x.y
+    @unittest.skip(reason="Got `CUDA error: misaligned address` with PyTorch 2.0.0.")
+    def test_multi_gpu_data_parallel_forward(self):
+        pass
 
     @unittest.skip(reason="Conditional DETR does not use inputs_embeds")
     def test_inputs_embeds(self):
@@ -492,6 +531,7 @@ class ConditionalDetrModelIntegrationTests(unittest.TestCase):
         with torch.no_grad():
             outputs = model(pixel_values, pixel_mask)
 
+        # verify logits + box predictions
         expected_shape_logits = torch.Size((1, model.config.num_queries, model.config.num_labels))
         self.assertEqual(outputs.logits.shape, expected_shape_logits)
         expected_slice_logits = torch.tensor(
@@ -505,3 +545,16 @@ class ConditionalDetrModelIntegrationTests(unittest.TestCase):
             [[0.7733, 0.6576, 0.4496], [0.5171, 0.1184, 0.9094], [0.8846, 0.5647, 0.2486]]
         ).to(torch_device)
         self.assertTrue(torch.allclose(outputs.pred_boxes[0, :3, :3], expected_slice_boxes, atol=1e-4))
+
+        # verify postprocessing
+        results = feature_extractor.post_process_object_detection(
+            outputs, threshold=0.3, target_sizes=[image.size[::-1]]
+        )[0]
+        expected_scores = torch.tensor([0.8330, 0.8313, 0.8039, 0.6829, 0.5355]).to(torch_device)
+        expected_labels = [75, 17, 17, 75, 63]
+        expected_slice_boxes = torch.tensor([38.3089, 72.1022, 177.6293, 118.4512]).to(torch_device)
+
+        self.assertEqual(len(results["scores"]), 5)
+        self.assertTrue(torch.allclose(results["scores"], expected_scores, atol=1e-4))
+        self.assertSequenceEqual(results["labels"].tolist(), expected_labels)
+        self.assertTrue(torch.allclose(results["boxes"][0, :], expected_slice_boxes))

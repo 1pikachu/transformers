@@ -14,7 +14,6 @@
 # limitations under the License.
 
 import collections
-import importlib.util
 import os
 import re
 from pathlib import Path
@@ -268,23 +267,30 @@ def get_transformers_submodules():
 IGNORE_SUBMODULES = [
     "convert_pytorch_checkpoint_to_tf2",
     "modeling_flax_pytorch_utils",
+    "models.esm.openfold_utils",
 ]
 
 
 def check_submodules():
     # This is to make sure the transformers module imported is the one in the repo.
-    spec = importlib.util.spec_from_file_location(
-        "transformers",
-        os.path.join(PATH_TO_TRANSFORMERS, "__init__.py"),
-        submodule_search_locations=[PATH_TO_TRANSFORMERS],
-    )
-    transformers = spec.loader.load_module()
+    from transformers.utils import direct_transformers_import
+
+    transformers = direct_transformers_import(PATH_TO_TRANSFORMERS)
+
+    import_structure_keys = set(transformers._import_structure.keys())
+    # This contains all the base keys of the _import_structure object defined in the init, but if the user is missing
+    # some optional dependencies, they may not have all of them. Thus we read the init to read all additions and
+    # (potentiall re-) add them.
+    with open(os.path.join(PATH_TO_TRANSFORMERS, "__init__.py"), "r") as f:
+        init_content = f.read()
+    import_structure_keys.update(set(re.findall(r"import_structure\[\"([^\"]*)\"\]", init_content)))
 
     module_not_registered = [
         module
         for module in get_transformers_submodules()
-        if module not in IGNORE_SUBMODULES and module not in transformers._import_structure.keys()
+        if module not in IGNORE_SUBMODULES and module not in import_structure_keys
     ]
+
     if len(module_not_registered) > 0:
         list_of_modules = "\n".join(f"- {module}" for module in module_not_registered)
         raise ValueError(

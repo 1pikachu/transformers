@@ -1,4 +1,4 @@
-name: Self-hosted runner (nightly)
+name: Self-hosted runner (nightly-ci)
 
 # Note that each job's dependencies go into a corresponding docker file.
 #
@@ -8,9 +8,7 @@ name: Self-hosted runner (nightly)
 
 on:
   repository_dispatch:
-# Disable temporarily until the test suite can be run under 12 hours.
-#  schedule:
-#    - cron: "0 16 * * *"
+  workflow_call:
 
 env:
   HF_HOME: /mnt/cache
@@ -28,12 +26,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout transformers
-        uses: actions/checkout@v2
+        uses: actions/checkout@v3
         with:
           fetch-depth: 2
 
       - name: Check Runner Status
-        run: python utils/check_self_hosted_runner.py --target_runners single-gpu-scheduled-ci-runner-docker,multi-gpu-scheduled-ci-runner-docker --token ${{ secrets.ACCESS_REPO_INFO_TOKEN }}
+        run: python utils/check_self_hosted_runner.py --target_runners single-gpu-past-ci-runner-docker,multi-gpu-past-ci-runner-docker --token ${{ secrets.ACCESS_REPO_INFO_TOKEN }}
 
   check_runners:
     name: Check Runners
@@ -41,7 +39,7 @@ jobs:
     strategy:
       matrix:
         machine_type: [single-gpu, multi-gpu]
-    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker') }}
+    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker-past-ci') }}
     container:
       image: huggingface/transformers-all-latest-torch-nightly-gpu
       options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -56,7 +54,7 @@ jobs:
     strategy:
       matrix:
         machine_type: [single-gpu, multi-gpu]
-    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker') }}
+    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker-past-ci') }}
     container:
       image: huggingface/transformers-all-latest-torch-nightly-gpu
       options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -75,11 +73,15 @@ jobs:
           rm -rf tests/models/__pycache__
           rm -rf reports
 
+      - name: Show installed libraries and their versions
+        working-directory: /transformers
+        run: pip freeze
+
       - id: set-matrix
         name: Identify models to test
         working-directory: /transformers/tests
         run: |
-          echo "::set-output name=matrix::$(python3 -c 'import os; tests = os.getcwd(); model_tests = os.listdir(os.path.join(tests, "models")); d1 = sorted(list(filter(os.path.isdir, os.listdir(tests)))); d2 = sorted(list(filter(os.path.isdir, [f"models/{x}" for x in model_tests]))); d1.remove("models"); d = d2 + d1; print(d)')"
+          echo "matrix=$(python3 -c 'import os; tests = os.getcwd(); model_tests = os.listdir(os.path.join(tests, "models")); d1 = sorted(list(filter(os.path.isdir, os.listdir(tests)))); d2 = sorted(list(filter(os.path.isdir, [f"models/{x}" for x in model_tests]))); d1.remove("models"); d = d2 + d1; print(d)')" >> $GITHUB_OUTPUT
 
       - name: NVIDIA-SMI
         run: |
@@ -92,7 +94,7 @@ jobs:
       matrix:
         folders: ${{ fromJson(needs.setup.outputs.matrix) }}
         machine_type: [single-gpu]
-    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker') }}
+    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker-past-ci') }}
     container:
       image: huggingface/transformers-all-latest-torch-nightly-gpu
       options: --gpus 0 --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -122,6 +124,10 @@ jobs:
         run: |
           python3 utils/print_env.py
 
+      - name: Show installed libraries and their versions
+        working-directory: /transformers
+        run: pip freeze
+
       - name: Run all tests on GPU
         working-directory: /transformers
         run: python3 -m pytest -v --make-reports=${{ matrix.machine_type }}_tests_gpu_${{ matrix.folders }} tests/${{ matrix.folders }}
@@ -133,9 +139,9 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.machine_type }}_run_all_tests_gpu_${{ env.matrix_folders }}_test_reports
+          name: ${{ matrix.machine_type }}_run_all_tests_gpu_${{ env.matrix_folders }}_test_reports_postfix_nightly
           path: /transformers/reports/${{ matrix.machine_type }}_tests_gpu_${{ matrix.folders }}
 
   run_tests_multi_gpu:
@@ -145,7 +151,7 @@ jobs:
       matrix:
         folders: ${{ fromJson(needs.setup.outputs.matrix) }}
         machine_type: [multi-gpu]
-    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker') }}
+    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker-past-ci') }}
     container:
       image: huggingface/transformers-all-latest-torch-nightly-gpu
       options: --gpus all --shm-size "16gb" --ipc host -v /mnt/cache/.cache/huggingface:/mnt/cache/
@@ -175,6 +181,10 @@ jobs:
         run: |
           python3 utils/print_env.py
 
+      - name: Show installed libraries and their versions
+        working-directory: /transformers
+        run: pip freeze
+
       - name: Run all tests on GPU
         working-directory: /transformers
         run: python3 -m pytest -v --make-reports=${{ matrix.machine_type }}_tests_gpu_${{ matrix.folders }} tests/${{ matrix.folders }}
@@ -186,9 +196,9 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.machine_type }}_run_all_tests_gpu_${{ env.matrix_folders }}_test_reports
+          name: ${{ matrix.machine_type }}_run_all_tests_gpu_${{ env.matrix_folders }}_test_reports_postfix_nightly
           path: /transformers/reports/${{ matrix.machine_type }}_tests_gpu_${{ matrix.folders }}
 
   run_all_tests_torch_cuda_extensions_gpu:
@@ -197,7 +207,7 @@ jobs:
       fail-fast: false
       matrix:
         machine_type: [single-gpu, multi-gpu]
-    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker') }}
+    runs-on: ${{ format('{0}-{1}', matrix.machine_type, 'docker-past-ci') }}
     needs: setup
     container:
       image: huggingface/transformers-pytorch-deepspeed-nightly-gpu
@@ -228,6 +238,10 @@ jobs:
         run: |
           python utils/print_env.py
 
+      - name: Show installed libraries and their versions
+        working-directory: /workspace/transformers
+        run: pip freeze
+
       - name: Run all tests on GPU
         working-directory: /workspace/transformers
         run: |
@@ -240,9 +254,9 @@ jobs:
 
       - name: Test suite reports artifacts
         if: ${{ always() }}
-        uses: actions/upload-artifact@v2
+        uses: actions/upload-artifact@v3
         with:
-          name: ${{ matrix.machine_type }}_run_tests_torch_cuda_extensions_gpu_test_reports
+          name: ${{ matrix.machine_type }}_run_tests_torch_cuda_extensions_gpu_test_reports_postfix_nightly
           path: /workspace/transformers/reports/${{ matrix.machine_type }}_tests_torch_cuda_extensions_gpu
 
   send_results:
@@ -266,8 +280,8 @@ jobs:
           echo "Runner status: ${{ needs.check_runners.result }}"
           echo "Setup status: ${{ needs.setup.result }}"
 
-      - uses: actions/checkout@v2
-      - uses: actions/download-artifact@v2
+      - uses: actions/checkout@v3
+      - uses: actions/download-artifact@v3
       - name: Send message to Slack
         env:
           CI_SLACK_BOT_TOKEN: ${{ secrets.CI_SLACK_BOT_TOKEN }}
@@ -275,7 +289,8 @@ jobs:
           CI_SLACK_CHANNEL_ID_DAILY: ${{ secrets.CI_SLACK_CHANNEL_ID_DAILY }}
           CI_SLACK_CHANNEL_DUMMY_TESTS: ${{ secrets.CI_SLACK_CHANNEL_DUMMY_TESTS }}
           CI_SLACK_REPORT_CHANNEL_ID: ${{ secrets.CI_SLACK_CHANNEL_ID_PAST_FUTURE }}
-          CI_EVENT: nightly-build
+          ACCESS_REPO_INFO_TOKEN: ${{ secrets.ACCESS_REPO_INFO_TOKEN }}
+          CI_EVENT: Nightly CI
           RUNNER_STATUS: ${{ needs.check_runner_status.result }}
           RUNNER_ENV_STATUS: ${{ needs.check_runners.result }}
           SETUP_STATUS: ${{ needs.setup.result }}
@@ -283,4 +298,13 @@ jobs:
         # `models/bert` to `models_bert` is required, as the artifact names use `_` instead of `/`.
         run: |
           pip install slack_sdk
+          pip show slack_sdk
           python utils/notification_service.py "${{ needs.setup.outputs.matrix }}"
+
+
+      # delete-artifact
+      - uses: geekyeggo/delete-artifact@v2
+        with:
+          name: |
+              single-*
+              multi-*

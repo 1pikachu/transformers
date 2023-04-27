@@ -1,19 +1,19 @@
 import os
+import unittest
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from unittest import TestCase
 from unittest.mock import patch
 
 import pytest
-
 from parameterized import parameterized
+
 from transformers import AutoConfig, PreTrainedTokenizerBase, is_tf_available, is_torch_available
 from transformers.onnx import (
     EXTERNAL_DATA_FORMAT_SIZE_LIMIT,
     OnnxConfig,
     OnnxConfigWithPast,
     ParameterFormat,
-    export,
     validate_model_outputs,
 )
 from transformers.onnx.utils import (
@@ -38,15 +38,6 @@ class OnnxUtilsTestCaseV2(TestCase):
     """
     Cover all the utilities involved to export ONNX models
     """
-
-    @require_torch
-    @patch("transformers.onnx.convert.is_torch_onnx_dict_inputs_support_available", return_value=False)
-    def test_ensure_pytorch_version_ge_1_8_0(self, mock_is_torch_onnx_dict_inputs_support_available):
-        """
-        Ensure we raise an Exception if the pytorch version is unsupported (< 1.8.0)
-        """
-        self.assertRaises(AssertionError, export, None, None, None, None, None)
-        mock_is_torch_onnx_dict_inputs_support_available.assert_called()
 
     def test_compute_effective_axis_dimension(self):
         """
@@ -179,44 +170,50 @@ class OnnxConfigWithPastTestCaseV2(TestCase):
 
 
 PYTORCH_EXPORT_MODELS = {
-    ("albert", "hf-internal-testing/tiny-albert"),
-    ("bert", "bert-base-cased"),
-    ("big-bird", "google/bigbird-roberta-base"),
-    ("ibert", "kssteven/ibert-roberta-base"),
+    ("albert", "hf-internal-testing/tiny-random-AlbertModel"),
+    ("bert", "hf-internal-testing/tiny-random-BertModel"),
+    ("beit", "microsoft/beit-base-patch16-224"),
+    ("big-bird", "hf-internal-testing/tiny-random-BigBirdModel"),
     ("camembert", "camembert-base"),
-    ("clip", "openai/clip-vit-base-patch32"),
-    ("convbert", "YituTech/conv-bert-base"),
-    ("codegen", "Salesforce/codegen-350M-multi"),
-    ("deberta", "microsoft/deberta-base"),
-    ("deberta-v2", "microsoft/deberta-v2-xlarge"),
+    ("clip", "hf-internal-testing/tiny-random-CLIPModel"),
+    ("convbert", "hf-internal-testing/tiny-random-ConvBertModel"),
+    ("codegen", "hf-internal-testing/tiny-random-CodeGenModel"),
+    ("data2vec-text", "hf-internal-testing/tiny-random-Data2VecTextModel"),
+    ("data2vec-vision", "facebook/data2vec-vision-base"),
+    ("deberta", "hf-internal-testing/tiny-random-DebertaModel"),
+    ("deberta-v2", "hf-internal-testing/tiny-random-DebertaV2Model"),
+    ("deit", "facebook/deit-small-patch16-224"),
     ("convnext", "facebook/convnext-tiny-224"),
     ("detr", "facebook/detr-resnet-50"),
-    ("distilbert", "distilbert-base-cased"),
-    ("electra", "google/electra-base-generator"),
-    ("resnet", "microsoft/resnet-50"),
-    ("roberta", "roberta-base"),
-    ("roformer", "junnyu/roformer_chinese_base"),
-    ("squeezebert", "squeezebert/squeezebert-uncased"),
-    ("mobilebert", "google/mobilebert-uncased"),
-    ("mobilevit", "apple/mobilevit-small"),
-    ("xlm", "xlm-clm-ende-1024"),
-    ("xlm-roberta", "xlm-roberta-base"),
-    ("layoutlm", "microsoft/layoutlm-base-uncased"),
-    ("layoutlmv3", "microsoft/layoutlmv3-base"),
+    ("distilbert", "hf-internal-testing/tiny-random-DistilBertModel"),
+    ("electra", "hf-internal-testing/tiny-random-ElectraModel"),
     ("groupvit", "nvidia/groupvit-gcc-yfcc"),
+    ("ibert", "kssteven/ibert-roberta-base"),
+    ("imagegpt", "openai/imagegpt-small"),
     ("levit", "facebook/levit-128S"),
-    ("owlvit", "google/owlvit-base-patch32"),
-    ("vit", "google/vit-base-patch16-224"),
-    ("deit", "facebook/deit-small-patch16-224"),
-    ("beit", "microsoft/beit-base-patch16-224"),
-    ("data2vec-text", "facebook/data2vec-text-base"),
-    ("data2vec-vision", "facebook/data2vec-vision-base"),
-    ("perceiver", "deepmind/language-perceiver", ("masked-lm", "sequence-classification")),
-    ("perceiver", "deepmind/vision-perceiver-conv", ("image-classification",)),
+    ("layoutlm", "hf-internal-testing/tiny-random-LayoutLMModel"),
+    ("layoutlmv3", "microsoft/layoutlmv3-base"),
     ("longformer", "allenai/longformer-base-4096"),
-    ("yolos", "hustvl/yolos-tiny"),
+    ("mobilebert", "hf-internal-testing/tiny-random-MobileBertModel"),
+    ("mobilenet_v1", "google/mobilenet_v1_0.75_192"),
+    ("mobilenet_v2", "google/mobilenet_v2_0.35_96"),
+    ("mobilevit", "apple/mobilevit-small"),
+    ("owlvit", "google/owlvit-base-patch32"),
+    ("perceiver", "hf-internal-testing/tiny-random-PerceiverModel", ("masked-lm", "sequence-classification")),
+    ("perceiver", "hf-internal-testing/tiny-random-PerceiverModel", ("image-classification",)),
+    ("poolformer", "sail/poolformer_s12"),
+    ("rembert", "google/rembert"),
+    ("resnet", "microsoft/resnet-50"),
+    ("roberta", "hf-internal-testing/tiny-random-RobertaModel"),
+    ("roformer", "hf-internal-testing/tiny-random-RoFormerModel"),
     ("segformer", "nvidia/segformer-b0-finetuned-ade-512-512"),
+    ("squeezebert", "hf-internal-testing/tiny-random-SqueezeBertModel"),
     ("swin", "microsoft/swin-tiny-patch4-window7-224"),
+    ("vit", "google/vit-base-patch16-224"),
+    ("yolos", "hustvl/yolos-tiny"),
+    ("whisper", "openai/whisper-tiny.en"),
+    ("xlm", "hf-internal-testing/tiny-random-XLMModel"),
+    ("xlm-roberta", "hf-internal-testing/tiny-random-XLMRobertaXLModel"),
 }
 
 PYTORCH_EXPORT_ENCODER_DECODER_MODELS = {
@@ -224,34 +221,31 @@ PYTORCH_EXPORT_ENCODER_DECODER_MODELS = {
 }
 
 PYTORCH_EXPORT_WITH_PAST_MODELS = {
-    ("bloom", "bigscience/bloom-560m"),
-    ("gpt2", "gpt2"),
-    ("gpt-neo", "EleutherAI/gpt-neo-125M"),
+    ("bloom", "hf-internal-testing/tiny-random-BloomModel"),
+    ("gpt2", "hf-internal-testing/tiny-random-GPT2Model"),
+    ("gpt-neo", "hf-internal-testing/tiny-random-GPTNeoModel"),
 }
 
 PYTORCH_EXPORT_SEQ2SEQ_WITH_PAST_MODELS = {
-    ("bart", "facebook/bart-base"),
-    ("mbart", "sshleifer/tiny-mbart"),
-    ("t5", "t5-small"),
-    ("marian", "Helsinki-NLP/opus-mt-en-de"),
-    ("mt5", "google/mt5-base"),
-    ("m2m-100", "facebook/m2m100_418M"),
+    ("bart", "hf-internal-testing/tiny-random-BartModel"),
+    ("bigbird-pegasus", "hf-internal-testing/tiny-random-BigBirdPegasusModel"),
     ("blenderbot-small", "facebook/blenderbot_small-90M"),
-    ("blenderbot", "facebook/blenderbot-400M-distill"),
-    ("bigbird-pegasus", "google/bigbird-pegasus-large-arxiv"),
-    ("longt5", "google/long-t5-local-base"),
-    # Disable for now as it causes fatal error `Floating point exception (core dumped)` and the subsequential tests are
-    # not run.
-    # ("longt5", "google/long-t5-tglobal-base"),
+    ("blenderbot", "hf-internal-testing/tiny-random-BlenderbotModel"),
+    ("longt5", "hf-internal-testing/tiny-random-LongT5Model"),
+    ("marian", "Helsinki-NLP/opus-mt-en-de"),
+    ("mbart", "sshleifer/tiny-mbart"),
+    ("mt5", "google/mt5-base"),
+    ("m2m-100", "hf-internal-testing/tiny-random-M2M100Model"),
+    ("t5", "hf-internal-testing/tiny-random-T5Model"),
 }
 
 # TODO(lewtun): Include the same model types in `PYTORCH_EXPORT_MODELS` once TensorFlow has parity with the PyTorch model implementations.
 TENSORFLOW_EXPORT_DEFAULT_MODELS = {
     ("albert", "hf-internal-testing/tiny-albert"),
-    ("bert", "bert-base-cased"),
+    ("bert", "hf-internal-testing/tiny-random-BertModel"),
     ("camembert", "camembert-base"),
-    ("distilbert", "distilbert-base-cased"),
-    ("roberta", "roberta-base"),
+    ("distilbert", "hf-internal-testing/tiny-random-DistilBertModel"),
+    ("roberta", "hf-internal-testing/tiny-random-RobertaModel"),
 }
 
 # TODO(lewtun): Include the same model types in `PYTORCH_EXPORT_WITH_PAST_MODELS` once TensorFlow has parity with the PyTorch model implementations.
@@ -270,7 +264,12 @@ def _get_models_to_test(export_models_list):
                     feature: FeaturesManager.get_config(name, feature) for _ in features for feature in _
                 }
             else:
-                feature_config_mapping = FeaturesManager.get_supported_features_for_model_type(name)
+                # pre-process the model names
+                model_type = name.replace("_", "-")
+                model_name = getattr(model, "name", "")
+                feature_config_mapping = FeaturesManager.get_supported_features_for_model_type(
+                    model_type, model_name=model_name
+                )
 
             for feature, onnx_config_class_constructor in feature_config_mapping.items():
                 models_to_test.append((f"{name}_{feature}", name, model, feature, onnx_config_class_constructor))
@@ -397,7 +396,7 @@ class OnnxExportTestCaseV2(TestCase):
         preprocessor = AutoTokenizer.from_pretrained(model_name)
 
         with NamedTemporaryFile("w") as decoder_output:
-            onnx_inputs, onnx_outputs = export(
+            _, onnx_outputs = export(
                 preprocessor,
                 decoder_model,
                 decoder_onnx_config,
@@ -491,6 +490,7 @@ class OnnxExportTestCaseV2(TestCase):
 class StableDropoutTestCase(TestCase):
     """Tests export of StableDropout module."""
 
+    @unittest.skip("torch 2.0.0 gives `torch.onnx.errors.OnnxExporterError: Module onnx is not installed!`.")
     @require_torch
     @pytest.mark.filterwarnings("ignore:.*Dropout.*:UserWarning:torch.onnx.*")  # torch.onnx is spammy.
     def test_training(self):

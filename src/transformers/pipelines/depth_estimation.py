@@ -24,6 +24,21 @@ class DepthEstimationPipeline(Pipeline):
     """
     Depth estimation pipeline using any `AutoModelForDepthEstimation`. This pipeline predicts the depth of an image.
 
+    Example:
+
+    ```python
+    >>> from transformers import pipeline
+
+    >>> depth_estimator = pipeline(task="depth-estimation", model="Intel/dpt-large")
+    >>> output = depth_estimator("http://images.cocodataset.org/val2017/000000039769.jpg")
+    >>> # This is a tensor with the values being the depth expressed in meters for each pixel
+    >>> output["predicted_depth"].shape
+    torch.Size([1, 384, 384])
+    ```
+
+    Learn more about the basics of using a pipeline in the [pipeline tutorial](../pipeline_tutorial)
+
+
     This depth estimation pipeline can currently be loaded from [`pipeline`] using the following task identifier:
     `"depth-estimation"`.
 
@@ -72,7 +87,7 @@ class DepthEstimationPipeline(Pipeline):
     def preprocess(self, image):
         image = load_image(image)
         self.image_size = image.size
-        model_inputs = self.feature_extractor(images=image, return_tensors=self.framework)
+        model_inputs = self.image_processor(images=image, return_tensors=self.framework)
         return model_inputs
 
     def _forward(self, model_inputs):

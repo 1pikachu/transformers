@@ -106,6 +106,21 @@ class DocumentQuestionAnsweringPipeline(ChunkPipeline):
     similar to the (extractive) question answering pipeline; however, the pipeline takes an image (and optional OCR'd
     words/boxes) as input instead of text context.
 
+    Example:
+
+    ```python
+    >>> from transformers import pipeline
+
+    >>> document_qa = pipeline(model="impira/layoutlm-document-qa")
+    >>> document_qa(
+    ...     image="https://huggingface.co/spaces/impira/docquery/resolve/2359223c1837a7587402bda0f2643382a6eefeab/invoice.png",
+    ...     question="What is the invoice number?",
+    ... )
+    [{'score': 0.425, 'answer': 'us-001', 'start': 16, 'end': 16}]
+    ```
+
+    Learn more about the basics of using a pipeline in the [pipeline tutorial](../pipeline_tutorial)
+
     This document question answering pipeline can currently be loaded from [`pipeline`] using the following task
     identifier: `"document-question-answering"`.
 
@@ -266,7 +281,9 @@ class DocumentQuestionAnsweringPipeline(ChunkPipeline):
         image_features = {}
         if input.get("image", None) is not None:
             image = load_image(input["image"])
-            if self.feature_extractor is not None:
+            if self.image_processor is not None:
+                image_features.update(self.image_processor(images=image, return_tensors=self.framework))
+            elif self.feature_extractor is not None:
                 image_features.update(self.feature_extractor(images=image, return_tensors=self.framework))
             elif self.model_type == ModelType.VisionEncoderDecoder:
                 raise ValueError("If you are using a VisionEncoderDecoderModel, you must provide a feature extractor")
@@ -337,7 +354,9 @@ class DocumentQuestionAnsweringPipeline(ChunkPipeline):
                 return_overflowing_tokens=True,
                 **tokenizer_kwargs,
             )
-            encoding.pop("overflow_to_sample_mapping")  # We do not use this
+            # TODO: check why slower `LayoutLMTokenizer` and `LayoutLMv2Tokenizer` don't have this key in outputs
+            # FIXME: ydshieh and/or Narsil
+            encoding.pop("overflow_to_sample_mapping", None)  # We do not use this
 
             num_spans = len(encoding["input_ids"])
 
@@ -399,7 +418,7 @@ class DocumentQuestionAnsweringPipeline(ChunkPipeline):
         else:
             model_outputs = self.model(**model_inputs)
 
-        model_outputs = {k: v for (k, v) in model_outputs.items()}
+        model_outputs = dict(model_outputs.items())
         model_outputs["p_mask"] = p_mask
         model_outputs["word_ids"] = word_ids
         model_outputs["words"] = words

@@ -16,7 +16,6 @@ import ast
 import collections
 import functools
 import json
-import math
 import operator
 import os
 import re
@@ -25,6 +24,7 @@ import time
 from typing import Dict, List, Optional, Union
 
 import requests
+from get_ci_error_statistics import get_job_links
 from slack_sdk import WebClient
 
 
@@ -98,7 +98,9 @@ def dicts_to_sum(objects: Union[Dict[str, Dict], List[dict]]):
 
 
 class Message:
-    def __init__(self, title: str, ci_title: str, model_results: Dict, additional_results: Dict):
+    def __init__(
+        self, title: str, ci_title: str, model_results: Dict, additional_results: Dict, selected_warnings: List = None
+    ):
         self.title = title
         self.ci_title = ci_title
 
@@ -135,6 +137,10 @@ class Message:
         self.additional_results = additional_results
 
         self.thread_ts = None
+
+        if selected_warnings is None:
+            selected_warnings = []
+        self.selected_warnings = selected_warnings
 
     @property
     def time(self) -> str:
@@ -195,6 +201,35 @@ class Message:
                 "type": "button",
                 "text": {"type": "plain_text", "text": "Check Action results", "emoji": True},
                 "url": f"https://github.com/huggingface/transformers/actions/runs/{os.environ['GITHUB_RUN_ID']}",
+            },
+        }
+
+    @property
+    def warnings(self) -> Dict:
+        # If something goes wrong, let's avoid the CI report failing to be sent.
+        button_text = "Check warnings (Link not found)"
+        # Use the workflow run link
+        job_link = f"https://github.com/huggingface/transformers/actions/runs/{os.environ['GITHUB_RUN_ID']}"
+        if "Extract warnings in CI artifacts" in github_actions_job_links:
+            button_text = "Check warnings"
+            # Use the actual job link
+            job_link = f"{github_actions_job_links['Extract warnings in CI artifacts']}"
+
+        huggingface_hub_warnings = [x for x in self.selected_warnings if "huggingface_hub" in x]
+        text = f"There are {len(self.selected_warnings)} warnings being selected."
+        text += f"\n{len(huggingface_hub_warnings)} of them are from `huggingface_hub`."
+
+        return {
+            "type": "section",
+            "text": {
+                "type": "plain_text",
+                "text": text,
+                "emoji": True,
+            },
+            "accessory": {
+                "type": "button",
+                "text": {"type": "plain_text", "text": button_text, "emoji": True},
+                "url": job_link,
             },
         }
 
@@ -384,11 +419,13 @@ class Message:
         if self.n_model_failures == 0 and self.n_additional_failures == 0:
             blocks.append(self.no_failures)
 
+        if len(self.selected_warnings) > 0:
+            blocks.append(self.warnings)
+
         return json.dumps(blocks)
 
     @staticmethod
     def error_out(title, ci_title="", runner_not_available=False, runner_failed=False, setup_failed=False):
-
         blocks = []
         title_block = {"type": "header", "text": {"type": "plain_text", "text": title}}
         blocks.append(title_block)
@@ -553,44 +590,20 @@ class Message:
                     time.sleep(1)
 
 
-def get_job_links():
-    run_id = os.environ["GITHUB_RUN_ID"]
-    url = f"https://api.github.com/repos/huggingface/transformers/actions/runs/{run_id}/jobs?per_page=100"
-    result = requests.get(url).json()
-    jobs = {}
-
-    try:
-        jobs.update({job["name"]: job["html_url"] for job in result["jobs"]})
-        pages_to_iterate_over = math.ceil((result["total_count"] - 100) / 100)
-
-        for i in range(pages_to_iterate_over):
-            result = requests.get(url + f"&page={i + 2}").json()
-            jobs.update({job["name"]: job["html_url"] for job in result["jobs"]})
-
-        return jobs
-    except Exception as e:
-        print("Unknown error, could not fetch links.", e)
-
-    return {}
-
-
-def retrieve_artifact(name: str, gpu: Optional[str]):
+def retrieve_artifact(artifact_path: str, gpu: Optional[str]):
     if gpu not in [None, "single", "multi"]:
         raise ValueError(f"Invalid GPU for artifact. Passed GPU: `{gpu}`.")
 
-    if gpu is not None:
-        name = f"{gpu}-gpu_{name}"
-
     _artifact = {}
 
-    if os.path.exists(name):
-        files = os.listdir(name)
+    if os.path.exists(artifact_path):
+        files = os.listdir(artifact_path)
         for file in files:
             try:
-                with open(os.path.join(name, file)) as f:
+                with open(os.path.join(artifact_path, file)) as f:
                     _artifact[file.split(".")[0]] = f.read()
             except UnicodeDecodeError as e:
-                raise ValueError(f"Could not open {os.path.join(name, file)}.") from e
+                raise ValueError(f"Could not open {os.path.join(artifact_path, file)}.") from e
 
     return _artifact
 
@@ -613,8 +626,14 @@ def retrieve_available_artifacts():
 
     directories = filter(os.path.isdir, os.listdir())
     for directory in directories:
-        if directory.startswith("single-gpu"):
-            artifact_name = directory[len("single-gpu") + 1 :]
+        artifact_name = directory
+
+        name_parts = artifact_name.split("_postfix_")
+        if len(name_parts) > 1:
+            artifact_name = name_parts[0]
+
+        if artifact_name.startswith("single-gpu"):
+            artifact_name = artifact_name[len("single-gpu") + 1 :]
 
             if artifact_name in _available_artifacts:
                 _available_artifacts[artifact_name].single_gpu = True
@@ -623,7 +642,7 @@ def retrieve_available_artifacts():
 
             _available_artifacts[artifact_name].add_path(directory, gpu="single")
 
-        elif directory.startswith("multi-gpu"):
+        elif artifact_name.startswith("multi-gpu"):
             artifact_name = directory[len("multi-gpu") + 1 :]
 
             if artifact_name in _available_artifacts:
@@ -633,7 +652,6 @@ def retrieve_available_artifacts():
 
             _available_artifacts[artifact_name].add_path(directory, gpu="multi")
         else:
-            artifact_name = directory
             if artifact_name not in _available_artifacts:
                 _available_artifacts[artifact_name] = Artifact(artifact_name)
 
@@ -666,7 +684,6 @@ def prepare_reports(title, header, reports, to_truncate=True):
 
 
 if __name__ == "__main__":
-
     runner_status = os.environ.get("RUNNER_STATUS")
     runner_env_status = os.environ.get("RUNNER_ENV_STATUS")
     setup_status = os.environ.get("SETUP_STATUS")
@@ -747,7 +764,9 @@ if __name__ == "__main__":
         Message.error_out(title, ci_title)
         raise ValueError("Errored out.")
 
-    github_actions_job_links = get_job_links()
+    github_actions_job_links = get_job_links(
+        workflow_run_id=os.environ["GITHUB_RUN_ID"], token=os.environ["ACCESS_REPO_INFO_TOKEN"]
+    )
     available_artifacts = retrieve_available_artifacts()
 
     modeling_categories = [
@@ -788,10 +807,12 @@ if __name__ == "__main__":
         framework, version = ci_event.replace("Past CI - ", "").split("-")
         framework = "PyTorch" if framework == "pytorch" else "TensorFlow"
         job_name_prefix = f"{framework} {version}"
+    elif ci_event.startswith("Nightly CI"):
+        job_name_prefix = "Nightly CI"
 
     for model in model_results.keys():
         for artifact_path in available_artifacts[f"run_all_tests_gpu_{model}_test_reports"].paths:
-            artifact = retrieve_artifact(artifact_path["name"], artifact_path["gpu"])
+            artifact = retrieve_artifact(artifact_path["path"], artifact_path["gpu"])
             if "stats" in artifact:
                 # Link to the GitHub Action job
                 # The job names use `matrix.folder` which contain things like `models/bert` instead of `models_bert`
@@ -806,9 +827,8 @@ if __name__ == "__main__":
                 stacktraces = handle_stacktraces(artifact["failures_line"])
 
                 for line in artifact["summary_short"].split("\n"):
-                    if re.search("FAILED", line):
-
-                        line = line.replace("FAILED ", "")
+                    if line.startswith("FAILED "):
+                        line = line[len("FAILED ") :]
                         line = line.split()[0].replace("\n", "")
 
                         if artifact_path["gpu"] not in model_results[model]["failures"]:
@@ -872,7 +892,6 @@ if __name__ == "__main__":
     }
 
     for key in additional_results.keys():
-
         # If a whole suite of test fails, the artifact isn't available.
         if additional_files[key] not in available_artifacts:
             additional_results[key]["error"] = True
@@ -886,7 +905,7 @@ if __name__ == "__main__":
             else:
                 additional_results[key]["job_link"][artifact_path["gpu"]] = github_actions_job_links.get(key)
 
-            artifact = retrieve_artifact(artifact_path["name"], artifact_path["gpu"])
+            artifact = retrieve_artifact(artifact_path["path"], artifact_path["gpu"])
             stacktraces = handle_stacktraces(artifact["failures_line"])
 
             failed, success, time_spent = handle_test_results(artifact["stats"])
@@ -899,8 +918,8 @@ if __name__ == "__main__":
 
             if failed:
                 for line in artifact["summary_short"].split("\n"):
-                    if re.search("FAILED", line):
-                        line = line.replace("FAILED ", "")
+                    if line.startswith("FAILED "):
+                        line = line[len("FAILED ") :]
                         line = line.split()[0].replace("\n", "")
 
                         if artifact_path["gpu"] not in additional_results[key]["failures"]:
@@ -910,7 +929,13 @@ if __name__ == "__main__":
                             {"line": line, "trace": stacktraces.pop(0)}
                         )
 
-    message = Message(title, ci_title, model_results, additional_results)
+    selected_warnings = []
+    if "warnings_in_ci" in available_artifacts:
+        directory = available_artifacts["warnings_in_ci"].paths[0]["path"]
+        with open(os.path.join(directory, "selected_warnings.json")) as fp:
+            selected_warnings = json.load(fp)
+
+    message = Message(title, ci_title, model_results, additional_results, selected_warnings=selected_warnings)
 
     # send report only if there is any failure (for push CI)
     if message.n_failures or ci_event != "push":

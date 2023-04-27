@@ -1,7 +1,3 @@
-# flake8: noqa
-# There's no way to ignore "F401 '...' imported but unused" warnings in this
-# module, but to preserve other warnings. So, don't check this module at all.
-
 # Copyright 2022 Facebook and The HuggingFace Team. All rights reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -39,6 +35,7 @@ else:
         "EsmModel",
         "EsmPreTrainedModel",
     ]
+    _import_structure["modeling_esmfold"] = ["EsmForProteinFolding", "EsmFoldPreTrainedModel"]
 
 try:
     if not is_tf_available():
@@ -54,7 +51,6 @@ else:
         "TFEsmModel",
         "TFEsmPreTrainedModel",
     ]
-
 
 if TYPE_CHECKING:
     from .configuration_esm import ESM_PRETRAINED_CONFIG_ARCHIVE_MAP, EsmConfig
@@ -74,6 +70,7 @@ if TYPE_CHECKING:
             EsmModel,
             EsmPreTrainedModel,
         )
+        from .modeling_esmfold import EsmFoldPreTrainedModel, EsmForProteinFolding
 
     try:
         if not is_tf_available():

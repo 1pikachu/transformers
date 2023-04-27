@@ -96,12 +96,15 @@ class BlenderbotTokenizer(PreTrainedTokenizer):
     This tokenizer has been trained to treat spaces like parts of the tokens (a bit like sentencepiece) so a word will
     be encoded differently whether it is at the beginning of the sentence (without space) or not:
 
-    ```
+    ```python
     >>> from transformers import BlenderbotTokenizer
+
     >>> tokenizer = BlenderbotTokenizer.from_pretrained("facebook/blenderbot-3B")
-    >>> tokenizer("Hello world")['input_ids']
-    [6950, 1085, 2]
-    >>> tokenizer(" Hello world")['input_ids']
+    >>> tokenizer.add_prefix_space = False
+    >>> tokenizer("Hello world")["input_ids"]
+    [47, 921, 86, 1085, 2]
+
+    >>> tokenizer(" Hello world")["input_ids"]
     [6950, 1085, 2]
     ```
 
@@ -184,7 +187,7 @@ class BlenderbotTokenizer(PreTrainedTokenizer):
         pad_token="<pad>",
         mask_token="<mask>",
         add_prefix_space=False,
-        **kwargs
+        **kwargs,
     ):
         bos_token = AddedToken(bos_token, lstrip=False, rstrip=False) if isinstance(bos_token, str) else bos_token
         eos_token = AddedToken(eos_token, lstrip=False, rstrip=False) if isinstance(eos_token, str) else eos_token
@@ -399,6 +402,7 @@ class BlenderbotTokenizer(PreTrainedTokenizer):
         Build model inputs from a sequence or a pair of sequence for sequence classification tasks by concatenating and
         adding special tokens. A Blenderbot sequence has the following format:
         - single sequence: ` X </s>`
+
         Args:
             token_ids_0 (`List[int]`):
                 List of IDs to which the special tokens will be added
