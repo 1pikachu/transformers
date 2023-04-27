@@ -493,19 +493,20 @@ def main():
             logger.info("Training new model from scratch")
             model = TFAutoModelForCausalLM.from_config(config)
 
-        # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
-        # on a small vocab and want a smaller embedding size, remove this test.
-        embeddings = model.get_input_embeddings()
+        if not model_args.model_type:
+            # We resize the embeddings only when necessary to avoid index errors. If you are creating a model from scratch
+            # on a small vocab and want a smaller embedding size, remove this test.
+            embeddings = model.get_input_embeddings()
 
-        # Matt: This is a temporary workaround as we transition our models to exclusively using Keras embeddings.
-        #       As soon as the transition is complete, all embeddings should be keras.Embeddings layers, and
-        #       the weights will always be in embeddings.embeddings.
-        if hasattr(embeddings, "embeddings"):
-            embedding_size = embeddings.embeddings.shape[0]
-        else:
-            embedding_size = embeddings.weight.shape[0]
-        if len(tokenizer) > embedding_size:
-            model.resize_token_embeddings(len(tokenizer))
+            # Matt: This is a temporary workaround as we transition our models to exclusively using Keras embeddings.
+            #       As soon as the transition is complete, all embeddings should be keras.Embeddings layers, and
+            #       the weights will always be in embeddings.embeddings.
+            if hasattr(embeddings, "embeddings"):
+                embedding_size = embeddings.embeddings.shape[0]
+            else:
+                embedding_size = embeddings.weight.shape[0]
+            if len(tokenizer) > embedding_size:
+                model.resize_token_embeddings(len(tokenizer))
         # endregion
 
         # region TF Dataset preparation
@@ -562,33 +563,36 @@ def main():
         # endregion
 
         # region Preparing push_to_hub and model card
-        push_to_hub_model_id = training_args.push_to_hub_model_id
-        model_name = model_args.model_name_or_path.split("/")[-1]
-        if not push_to_hub_model_id:
-            if data_args.dataset_name is not None:
-                push_to_hub_model_id = f"{model_name}-finetuned-{data_args.dataset_name}"
-            else:
-                push_to_hub_model_id = f"{model_name}-finetuned-clm"
-
-        model_card_kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "text-generation"}
-        if data_args.dataset_name is not None:
-            model_card_kwargs["dataset_tags"] = data_args.dataset_name
-            if data_args.dataset_config_name is not None:
-                model_card_kwargs["dataset_args"] = data_args.dataset_config_name
-                model_card_kwargs["dataset"] = f"{data_args.dataset_name} {data_args.dataset_config_name}"
-            else:
-                model_card_kwargs["dataset"] = data_args.dataset_name
-
         if training_args.push_to_hub:
-            callbacks = [
-                PushToHubCallback(
-                    output_dir=training_args.output_dir,
-                    hub_model_id=push_to_hub_model_id,
-                    hub_token=training_args.push_to_hub_token,
-                    tokenizer=tokenizer,
-                    **model_card_kwargs,
-                )
-            ]
+            push_to_hub_model_id = training_args.push_to_hub_model_id
+            model_name = model_args.model_name_or_path.split("/")[-1]
+            if not push_to_hub_model_id:
+                if data_args.dataset_name is not None:
+                    push_to_hub_model_id = f"{model_name}-finetuned-{data_args.dataset_name}"
+                else:
+                    push_to_hub_model_id = f"{model_name}-finetuned-clm"
+
+            model_card_kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "text-generation"}
+            if data_args.dataset_name is not None:
+                model_card_kwargs["dataset_tags"] = data_args.dataset_name
+                if data_args.dataset_config_name is not None:
+                    model_card_kwargs["dataset_args"] = data_args.dataset_config_name
+                    model_card_kwargs["dataset"] = f"{data_args.dataset_name} {data_args.dataset_config_name}"
+                else:
+                    model_card_kwargs["dataset"] = data_args.dataset_name
+
+            if training_args.push_to_hub:
+                callbacks = [
+                    PushToHubCallback(
+                        output_dir=training_args.output_dir,
+                        hub_model_id=push_to_hub_model_id,
+                        hub_token=training_args.push_to_hub_token,
+                        tokenizer=tokenizer,
+                        **model_card_kwargs,
+                    )
+                ]
+            else:
+                callbacks = []
         else:
             callbacks = []
         # endregion
