@@ -9,7 +9,7 @@ function main {
     set_environment
 
     # requirements
-    pip install evaluate datasets==2.8.0 rouge_score seqeval jiwer==3.0.1
+    pip install -r requirements.txt
     pip uninstall tokenizers transformers apex -y
     python setup.py develop
     export WANDB_DISABLED=True

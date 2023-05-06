@@ -1,0 +1,6 @@
+librosa==0.10.0.post2
+evaluate
+datasets==2.8.0
+rouge_score
+seqeval
+jiwer==3.0.1
