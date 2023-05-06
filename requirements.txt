@@ -4,3 +4,4 @@ datasets==2.8.0
 rouge_score
 seqeval
 jiwer==3.0.1
+sacrebleu
