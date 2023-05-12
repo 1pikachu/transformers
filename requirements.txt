@@ -7,3 +7,4 @@ seqeval==1.2.2
 sacremoses==0.0.53
 sentencepiece==0.1.97
 protobuf==3.20.1
+sacrebleu==2.3.1
