@@ -3168,7 +3168,7 @@ class Trainer:
                         os.makedirs(timeline_dir)
                     except:
                         pass
-                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
+                torch.save(prof.key_averages().table(sort_by="self_{}_time_total".format(self.args.device)),
                     timeline_dir+'profile.pt')
                 torch.save(prof.key_averages(group_by_input_shape=True).table(),
                     timeline_dir+'profile_detail.pt')
