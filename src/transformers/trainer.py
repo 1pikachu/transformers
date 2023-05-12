@@ -669,7 +669,7 @@ class Trainer:
             self.ctx_manager_torchdynamo = contextlib.nullcontext()
 
     def trace_handler(self, p):
-        output = p.key_averages().table(sort_by="self_cpu_time_total")
+        output = p.key_averages().table(sort_by="self_cuda_time_total")
         print(output)
         import pathlib
         timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
@@ -1750,303 +1750,31 @@ class Trainer:
             total_time = 0.0
             total_count = 0
             profile_len = self.args.num_iters // 2
-            if self.args.profile and self.args.device == "xpu":
-                for step, inputs in enumerate(epoch_iterator):
-                    if step >= self.args.num_iters - 1:
-                        self.control.should_training_stop = True
+            for step, inputs in enumerate(epoch_iterator):
+                if step >= self.args.num_iters - 1:
+                    self.control.should_training_stop = True
+                print("--------input shape---------")
+                for i in inputs:
+                    print("label:{}, shape:{}".format(i, inputs[i].shape))
 
-                    # Skip past any already trained steps if resuming training
-                    if steps_trained_in_current_epoch > 0:
-                        steps_trained_in_current_epoch -= 1
-                        if steps_trained_progress_bar is not None:
-                            steps_trained_progress_bar.update(1)
-                        if steps_trained_in_current_epoch == 0:
-                            self._load_rng_state(resume_from_checkpoint)
-                        continue
-                    elif steps_trained_progress_bar is not None:
-                        steps_trained_progress_bar.close()
-                        steps_trained_progress_bar = None
+                # Skip past any already trained steps if resuming training
+                if steps_trained_in_current_epoch > 0:
+                    steps_trained_in_current_epoch -= 1
+                    if steps_trained_progress_bar is not None:
+                        steps_trained_progress_bar.update(1)
+                    if steps_trained_in_current_epoch == 0:
+                        self._load_rng_state(resume_from_checkpoint)
+                    continue
+                elif steps_trained_progress_bar is not None:
+                    steps_trained_progress_bar.close()
+                    steps_trained_progress_bar = None
 
-                    if step % args.gradient_accumulation_steps == 0:
-                        self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
+                if step % args.gradient_accumulation_steps == 0:
+                    self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
 
-                    # calcute time
-                    start_time = time.time()
-                    with torch.autograd.profiler_legacy.profile(profile, use_xpu=True) as prof:
-                        if (
-                            ((step + 1) % args.gradient_accumulation_steps != 0)
-                            and args.local_rank != -1
-                            and args._no_sync_in_gradient_accumulation
-                        ):
-                            # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
-                            with model.no_sync():
-                                tr_loss_step = self.training_step(model, inputs)
-                        else:
-                            tr_loss_step = self.training_step(model, inputs)
-
-                    if (
-                        args.logging_nan_inf_filter
-                        and not is_torch_tpu_available()
-                        and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
-                    ):
-                        # if loss is nan or inf simply add the average of previous logged losses
-                        tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
-                    else:
-                        tr_loss += tr_loss_step
-
-                    self.current_flos += float(self.floating_point_ops(inputs))
-
-                    # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
-                    if self.deepspeed:
-                        self.deepspeed.step()
-
-                    if (step + 1) % args.gradient_accumulation_steps == 0 or (
-                        # last step in epoch but step is always smaller than gradient_accumulation_steps
-                        steps_in_epoch <= args.gradient_accumulation_steps
-                        and (step + 1) == steps_in_epoch
-                    ):
-                        # Gradient clipping
-                        if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
-                            # deepspeed does its own clipping
-
-                            if self.do_grad_scaling:
-                                # Reduce gradients first for XLA
-                                if is_torch_tpu_available():
-                                    gradients = xm._fetch_gradients(self.optimizer)
-                                    xm.all_reduce("sum", gradients, scale=1.0 / xm.xrt_world_size())
-                                # AMP: gradients need unscaling
-                                self.scaler.unscale_(self.optimizer)
-
-                            if is_sagemaker_mp_enabled() and args.fp16:
-                                self.optimizer.clip_master_grads(args.max_grad_norm)
-                            elif hasattr(self.optimizer, "clip_grad_norm"):
-                                # Some optimizers (like the sharded optimizer) have a specific way to do gradient clipping
-                                self.optimizer.clip_grad_norm(args.max_grad_norm)
-                            elif hasattr(model, "clip_grad_norm_"):
-                                # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
-                                model.clip_grad_norm_(args.max_grad_norm)
-                            else:
-                                # Revert to normal clipping otherwise, handling Apex or full precision
-                                nn.utils.clip_grad_norm_(
-                                    amp.master_params(self.optimizer) if self.use_apex else model.parameters(),
-                                    args.max_grad_norm,
-                                )
-
-                        # Optimizer step
-                        optimizer_was_run = True
-                        if self.deepspeed:
-                            pass  # called outside the loop
-                        elif is_torch_tpu_available():
-                            if self.do_grad_scaling:
-                                self.scaler.step(self.optimizer)
-                                self.scaler.update()
-                            else:
-                                xm.optimizer_step(self.optimizer)
-                        elif self.do_grad_scaling:
-                            scale_before = self.scaler.get_scale()
-                            self.scaler.step(self.optimizer)
-                            self.scaler.update()
-                            scale_after = self.scaler.get_scale()
-                            optimizer_was_run = scale_before <= scale_after
-                        else:
-                            self.optimizer.step()
-
-                        if optimizer_was_run and not self.deepspeed:
-                            self.lr_scheduler.step()
-
-                        model.zero_grad()
-                        torch.xpu.synchronize()
-                        # calcute time
-                        end_time = time.time()
-                        if args.profile and step == profile_len:
-                            import pathlib
-                            timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
-                            if not os.path.exists(timeline_dir):
-                                try:
-                                    os.makedirs(timeline_dir)
-                                except:
-                                    pass
-                            torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
-                                timeline_dir+'profile.pt')
-                            torch.save(prof.key_averages(group_by_input_shape=True).table(),
-                                timeline_dir+'profile_detail.pt')
-                            torch.save(prof.table(sort_by="id", row_limit=100000),
-                                timeline_dir+'profile_detail_withId.pt')
-                            prof.export_chrome_trace(timeline_dir+"trace.json")
-
-                        if step >= self.args.num_warmup:
-                            total_time += end_time - start_time
-                            total_count += 1
-                        print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
-
-                        self.state.global_step += 1
-                        self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                        self.control = self.callback_handler.on_step_end(args, self.state, self.control)
-
-                        self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
-                    else:
-                        self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
-
-                    if self.control.should_epoch_stop or self.control.should_training_stop:
-                        break
-            elif self.args.profile and self.args.device == "cuda":
-                with torch.profiler.profile(
-                    activities=[torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA],
-                    record_shapes=True,
-                    schedule=torch.profiler.schedule(
-                        wait=profile_len,
-                        warmup=2,
-                        active=1,
-                    ),
-                    on_trace_ready=self.trace_handler,
-                ) as p:
-                    for step, inputs in enumerate(epoch_iterator):
-                        if step >= self.args.num_iters - 1:
-                            self.control.should_training_stop = True
-
-                        # Skip past any already trained steps if resuming training
-                        if steps_trained_in_current_epoch > 0:
-                            steps_trained_in_current_epoch -= 1
-                            if steps_trained_progress_bar is not None:
-                                steps_trained_progress_bar.update(1)
-                            if steps_trained_in_current_epoch == 0:
-                                self._load_rng_state(resume_from_checkpoint)
-                            continue
-                        elif steps_trained_progress_bar is not None:
-                            steps_trained_progress_bar.close()
-                            steps_trained_progress_bar = None
-
-                        if step % args.gradient_accumulation_steps == 0:
-                            self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
-
-                        # calcute time
-                        start_time = time.time()
-                        if (
-                            ((step + 1) % args.gradient_accumulation_steps != 0)
-                            and args.local_rank != -1
-                            and args._no_sync_in_gradient_accumulation
-                        ):
-                            # Avoid unnecessary DDP synchronization since there will be no backward pass on this example.
-                            with model.no_sync():
-                                tr_loss_step = self.training_step(model, inputs)
-                        else:
-                            tr_loss_step = self.training_step(model, inputs)
-
-                        if (
-                            args.logging_nan_inf_filter
-                            and not is_torch_tpu_available()
-                            and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
-                        ):
-                            # if loss is nan or inf simply add the average of previous logged losses
-                            tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
-                        else:
-                            tr_loss += tr_loss_step
-
-                        self.current_flos += float(self.floating_point_ops(inputs))
-
-                        # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
-                        if self.deepspeed:
-                            self.deepspeed.step()
-
-                        if (step + 1) % args.gradient_accumulation_steps == 0 or (
-                            # last step in epoch but step is always smaller than gradient_accumulation_steps
-                            steps_in_epoch <= args.gradient_accumulation_steps
-                            and (step + 1) == steps_in_epoch
-                        ):
-                            # Gradient clipping
-                            if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
-                                # deepspeed does its own clipping
-
-                                if self.do_grad_scaling:
-                                    # Reduce gradients first for XLA
-                                    if is_torch_tpu_available():
-                                        gradients = xm._fetch_gradients(self.optimizer)
-                                        xm.all_reduce("sum", gradients, scale=1.0 / xm.xrt_world_size())
-                                    # AMP: gradients need unscaling
-                                    self.scaler.unscale_(self.optimizer)
-
-                                if is_sagemaker_mp_enabled() and args.fp16:
-                                    self.optimizer.clip_master_grads(args.max_grad_norm)
-                                elif hasattr(self.optimizer, "clip_grad_norm"):
-                                    # Some optimizers (like the sharded optimizer) have a specific way to do gradient clipping
-                                    self.optimizer.clip_grad_norm(args.max_grad_norm)
-                                elif hasattr(model, "clip_grad_norm_"):
-                                    # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
-                                    model.clip_grad_norm_(args.max_grad_norm)
-                                else:
-                                    # Revert to normal clipping otherwise, handling Apex or full precision
-                                    nn.utils.clip_grad_norm_(
-                                        amp.master_params(self.optimizer) if self.use_apex else model.parameters(),
-                                        args.max_grad_norm,
-                                    )
-
-                            # Optimizer step
-                            optimizer_was_run = True
-                            if self.deepspeed:
-                                pass  # called outside the loop
-                            elif is_torch_tpu_available():
-                                if self.do_grad_scaling:
-                                    self.scaler.step(self.optimizer)
-                                    self.scaler.update()
-                                else:
-                                    xm.optimizer_step(self.optimizer)
-                            elif self.do_grad_scaling:
-                                scale_before = self.scaler.get_scale()
-                                self.scaler.step(self.optimizer)
-                                self.scaler.update()
-                                scale_after = self.scaler.get_scale()
-                                optimizer_was_run = scale_before <= scale_after
-                            else:
-                                self.optimizer.step()
-
-                            if optimizer_was_run and not self.deepspeed:
-                                self.lr_scheduler.step()
-
-                            model.zero_grad()
-                            torch.cuda.synchronize()
-                            # calcute time
-                            end_time = time.time()
-                            p.step()
-                            if step >= self.args.num_warmup:
-                                total_time += end_time - start_time
-                                total_count += 1
-                            print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
-
-                            self.state.global_step += 1
-                            self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                            self.control = self.callback_handler.on_step_end(args, self.state, self.control)
-
-                            self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
-                        else:
-                            self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
-
-                        if self.control.should_epoch_stop or self.control.should_training_stop:
-                            break
-            else:
-                for step, inputs in enumerate(epoch_iterator):
-                    if step >= self.args.num_iters - 1:
-                        self.control.should_training_stop = True
-                    print("--------input shape---------")
-                    for i in inputs:
-                        print("label:{}, shape:{}".format(i, inputs[i].shape))
-
-                    # Skip past any already trained steps if resuming training
-                    if steps_trained_in_current_epoch > 0:
-                        steps_trained_in_current_epoch -= 1
-                        if steps_trained_progress_bar is not None:
-                            steps_trained_progress_bar.update(1)
-                        if steps_trained_in_current_epoch == 0:
-                            self._load_rng_state(resume_from_checkpoint)
-                        continue
-                    elif steps_trained_progress_bar is not None:
-                        steps_trained_progress_bar.close()
-                        steps_trained_progress_bar = None
-
-                    if step % args.gradient_accumulation_steps == 0:
-                        self.control = self.callback_handler.on_step_begin(args, self.state, self.control)
-
-                    # calcute time
-                    start_time = time.time()
+                # calcute time
+                start_time = time.time()
+                with self.context_func(self.args.profile if step == profile_len else False, self.args.device, "none") as prof:
                     if (
                         ((step + 1) % args.gradient_accumulation_steps != 0)
                         and args.local_rank != -1
@@ -2058,99 +1786,114 @@ class Trainer:
                     else:
                         tr_loss_step = self.training_step(model, inputs)
 
-                    if (
-                        args.logging_nan_inf_filter
-                        and not is_torch_tpu_available()
-                        and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
-                    ):
-                        # if loss is nan or inf simply add the average of previous logged losses
-                        tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
-                    else:
-                        tr_loss += tr_loss_step
+                if (
+                    args.logging_nan_inf_filter
+                    and not is_torch_tpu_available()
+                    and (torch.isnan(tr_loss_step) or torch.isinf(tr_loss_step))
+                ):
+                    # if loss is nan or inf simply add the average of previous logged losses
+                    tr_loss += tr_loss / (1 + self.state.global_step - self._globalstep_last_logged)
+                else:
+                    tr_loss += tr_loss_step
 
-                    self.current_flos += float(self.floating_point_ops(inputs))
+                self.current_flos += float(self.floating_point_ops(inputs))
 
-                    # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
+                # Optimizer step for deepspeed must be called on every step regardless of the value of gradient_accumulation_steps
+                if self.deepspeed:
+                    self.deepspeed.step()
+
+                if (step + 1) % args.gradient_accumulation_steps == 0 or (
+                    # last step in epoch but step is always smaller than gradient_accumulation_steps
+                    steps_in_epoch <= args.gradient_accumulation_steps
+                    and (step + 1) == steps_in_epoch
+                ):
+                    # Gradient clipping
+                    if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
+                        # deepspeed does its own clipping
+
+                        if self.do_grad_scaling:
+                            # Reduce gradients first for XLA
+                            if is_torch_tpu_available():
+                                gradients = xm._fetch_gradients(self.optimizer)
+                                xm.all_reduce("sum", gradients, scale=1.0 / xm.xrt_world_size())
+                            # AMP: gradients need unscaling
+                            self.scaler.unscale_(self.optimizer)
+
+                        if is_sagemaker_mp_enabled() and args.fp16:
+                            self.optimizer.clip_master_grads(args.max_grad_norm)
+                        elif hasattr(self.optimizer, "clip_grad_norm"):
+                            # Some optimizers (like the sharded optimizer) have a specific way to do gradient clipping
+                            self.optimizer.clip_grad_norm(args.max_grad_norm)
+                        elif hasattr(model, "clip_grad_norm_"):
+                            # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
+                            model.clip_grad_norm_(args.max_grad_norm)
+                        else:
+                            # Revert to normal clipping otherwise, handling Apex or full precision
+                            nn.utils.clip_grad_norm_(
+                                amp.master_params(self.optimizer) if self.use_apex else model.parameters(),
+                                args.max_grad_norm,
+                            )
+
+                    # Optimizer step
+                    optimizer_was_run = True
                     if self.deepspeed:
-                        self.deepspeed.step()
-
-                    if (step + 1) % args.gradient_accumulation_steps == 0 or (
-                        # last step in epoch but step is always smaller than gradient_accumulation_steps
-                        steps_in_epoch <= args.gradient_accumulation_steps
-                        and (step + 1) == steps_in_epoch
-                    ):
-                        # Gradient clipping
-                        if args.max_grad_norm is not None and args.max_grad_norm > 0 and not self.deepspeed:
-                            # deepspeed does its own clipping
-
-                            if self.do_grad_scaling:
-                                # Reduce gradients first for XLA
-                                if is_torch_tpu_available():
-                                    gradients = xm._fetch_gradients(self.optimizer)
-                                    xm.all_reduce("sum", gradients, scale=1.0 / xm.xrt_world_size())
-                                # AMP: gradients need unscaling
-                                self.scaler.unscale_(self.optimizer)
-
-                            if is_sagemaker_mp_enabled() and args.fp16:
-                                self.optimizer.clip_master_grads(args.max_grad_norm)
-                            elif hasattr(self.optimizer, "clip_grad_norm"):
-                                # Some optimizers (like the sharded optimizer) have a specific way to do gradient clipping
-                                self.optimizer.clip_grad_norm(args.max_grad_norm)
-                            elif hasattr(model, "clip_grad_norm_"):
-                                # Some models (like FullyShardedDDP) have a specific way to do gradient clipping
-                                model.clip_grad_norm_(args.max_grad_norm)
-                            else:
-                                # Revert to normal clipping otherwise, handling Apex or full precision
-                                nn.utils.clip_grad_norm_(
-                                    amp.master_params(self.optimizer) if self.use_apex else model.parameters(),
-                                    args.max_grad_norm,
-                                )
-
-                        # Optimizer step
-                        optimizer_was_run = True
-                        if self.deepspeed:
-                            pass  # called outside the loop
-                        elif is_torch_tpu_available():
-                            if self.do_grad_scaling:
-                                self.scaler.step(self.optimizer)
-                                self.scaler.update()
-                            else:
-                                xm.optimizer_step(self.optimizer)
-                        elif self.do_grad_scaling:
-                            scale_before = self.scaler.get_scale()
+                        pass  # called outside the loop
+                    elif is_torch_tpu_available():
+                        if self.do_grad_scaling:
                             self.scaler.step(self.optimizer)
                             self.scaler.update()
-                            scale_after = self.scaler.get_scale()
-                            optimizer_was_run = scale_before <= scale_after
                         else:
-                            self.optimizer.step()
-
-                        if optimizer_was_run and not self.deepspeed:
-                            self.lr_scheduler.step()
-
-                        model.zero_grad()
-                        if self.args.device == "xpu":
-                            torch.xpu.synchronize()
-                        elif self.args.device == "cuda":
-                            torch.cuda.synchronize()
-                        # calcute time
-                        end_time = time.time()
-
-                        if step >= self.args.num_warmup:
-                            total_time += end_time - start_time
-                            total_count += 1
-                        print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
-
-                        self.state.global_step += 1
-                        self.state.epoch = epoch + (step + 1) / steps_in_epoch
-                        self.control = self.callback_handler.on_step_end(args, self.state, self.control)
-
-                        self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
+                            xm.optimizer_step(self.optimizer)
+                    elif self.do_grad_scaling:
+                        scale_before = self.scaler.get_scale()
+                        self.scaler.step(self.optimizer)
+                        self.scaler.update()
+                        scale_after = self.scaler.get_scale()
+                        optimizer_was_run = scale_before <= scale_after
                     else:
-                        self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
+                        self.optimizer.step()
 
-                    if self.control.should_epoch_stop or self.control.should_training_stop:
-                        break
+                    if optimizer_was_run and not self.deepspeed:
+                        self.lr_scheduler.step()
+
+                    model.zero_grad()
+                    if self.args.device == "xpu":
+                        torch.xpu.synchronize()
+                    elif self.args.device == "cuda":
+                        torch.cuda.synchronize()
+                    # calcute time
+                    end_time = time.time()
+
+                    if self.args.profile and step == profile_len:
+                        import pathlib
+                        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+                        if not os.path.exists(timeline_dir):
+                            try:
+                                os.makedirs(timeline_dir)
+                            except:
+                                pass
+                        torch.save(prof.key_averages().table(sort_by="self_{}_time_total".format(args.device)),
+                            timeline_dir+'profile.pt')
+                        torch.save(prof.key_averages(group_by_input_shape=True).table(),
+                            timeline_dir+'profile_detail.pt')
+                        #torch.save(prof.table(sort_by="id", row_limit=100000),
+                        #    timeline_dir+'profile_detail_withId.pt')
+                        #prof.export_chrome_trace(timeline_dir+"trace.json")
+                    if step >= self.args.num_warmup:
+                        total_time += end_time - start_time
+                        total_count += 1
+                    print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
+
+                    self.state.global_step += 1
+                    self.state.epoch = epoch + (step + 1) / steps_in_epoch
+                    self.control = self.callback_handler.on_step_end(args, self.state, self.control)
+
+                    self._maybe_log_save_evaluate(tr_loss, model, trial, epoch, ignore_keys_for_eval)
+                else:
+                    self.control = self.callback_handler.on_substep_end(args, self.state, self.control)
+
+                if self.control.should_epoch_stop or self.control.should_training_stop:
+                    break
             if step < 0:
                 logger.warning(
                     "There seems to be not a single sample in your epoch_iterator, stopping training at step"
@@ -3240,6 +2983,30 @@ class Trainer:
 
         return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
 
+    @contextlib.contextmanager
+    def context_func(self, profiling_enabled, device, fuser_mode):
+        if profiling_enabled and device == "xpu":
+            with (torch.autograd.profiler_legacy.profile(enabled=profiling_enabled, use_xpu=True, record_shapes=False)) as prof:
+                yield prof
+        elif profiling_enabled and device == "cuda":
+            with torch.jit.fuser(fuser_mode):
+                with torch.profiler.profile(
+                    activities=[
+                        torch.profiler.ProfilerActivity.CPU,
+                        torch.profiler.ProfilerActivity.CUDA],
+                    on_trace_ready=torch.profiler.tensorboard_trace_handler('./timeline', worker_name='worker0'),
+                    record_shapes=True,
+                    profile_memory=True,  # This will take 1 to 2 minutes. Setting it to False could greatly speedup.
+                    with_stack=True
+                ) as prof:
+                    yield prof
+        elif device == "cuda":
+            with torch.jit.fuser(fuser_mode):
+                yield
+        else:
+            with contextlib.nullcontext(None):
+                yield
+
     def evaluation_loop(
         self,
         dataloader: DataLoader,
@@ -3361,284 +3128,104 @@ class Trainer:
                     torch.xpu.synchronize()
 
         # Main evaluation loop
-        if args.profile and args.device == "xpu":
-            for step, inputs in enumerate(dataloader):
-                if self.args.num_iters > 0 and step >= self.args.num_iters:
-                    break
-                # Update the observed num examples
-                observed_batch_size = find_batch_size(inputs)
-                if observed_batch_size is not None:
-                    observed_num_examples += observed_batch_size
-                    # For batch samplers, batch_size is not known by the dataloader in advance.
-                    if batch_size is None:
-                        batch_size = observed_batch_size
+        for step, inputs in enumerate(dataloader):
+            if self.args.num_iters > 0 and step >= self.args.num_iters:
+                break
+            # Update the observed num examples
+            observed_batch_size = find_batch_size(inputs)
+            if observed_batch_size is not None:
+                observed_num_examples += observed_batch_size
+                # For batch samplers, batch_size is not known by the dataloader in advance.
+                if batch_size is None:
+                    batch_size = observed_batch_size
+            print("--------input shape---------")
+            for i in inputs:
+                print("label:{}, shape:{}".format(i, inputs[i].shape), flush=True)
 
-                # Prediction step
-                with torch.autograd.profiler_legacy.profile(enabled=args.profile, use_xpu=True, record_shapes=False) as prof:
-                    tic = time.time()
-                    inputs = {i : inputs[i].to(args.device) 
-                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
-                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-                    torch.xpu.synchronize()
-                    toc = time.time()
-                inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
-
-                print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
-                    print("the iteration-{} has been calcute perf".format(step))
-                    total_time += toc - tic
-                    total_data += batch_size
-                if args.profile and step == profile_len:
-                    import pathlib
-                    timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
-                    if not os.path.exists(timeline_dir):
-                        try:
-                            os.makedirs(timeline_dir)
-                        except:
-                            pass
-                    torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
-                        timeline_dir+'profile.pt')
-                    torch.save(prof.key_averages(group_by_input_shape=True).table(),
-                        timeline_dir+'profile_detail.pt')
-                    torch.save(prof.table(sort_by="id", row_limit=100000),
-                        timeline_dir+'profile_detail_withId.pt')
-                    prof.export_chrome_trace(timeline_dir+"trace.json")
-
-                if is_torch_tpu_available():
-                    xm.mark_step()
-
-                # Update containers on host
-                if loss is not None:
-                    losses = self._nested_gather(loss.repeat(batch_size))
-                    losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
-                if labels is not None:
-                    labels = self._pad_across_processes(labels)
-                    labels = self._nested_gather(labels)
-                    labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
-                if inputs_decode is not None:
-                    inputs_decode = self._pad_across_processes(inputs_decode)
-                    inputs_decode = self._nested_gather(inputs_decode)
-                    inputs_host = (
-                        inputs_decode
-                        if inputs_host is None
-                        else nested_concat(inputs_host, inputs_decode, padding_index=-100)
-                    )
-                if logits is not None:
-                    logits = self._pad_across_processes(logits)
-                    logits = self._nested_gather(logits)
-                    if self.preprocess_logits_for_metrics is not None:
-                        logits = self.preprocess_logits_for_metrics(logits, labels)
-                    preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
-                self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
-
-                # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-                if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
-                    if losses_host is not None:
-                        losses = nested_numpify(losses_host)
-                        all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
-                    if preds_host is not None:
-                        logits = nested_numpify(preds_host)
-                        all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-                    if inputs_host is not None:
-                        inputs_decode = nested_numpify(inputs_host)
-                        all_inputs = (
-                            inputs_decode
-                            if all_inputs is None
-                            else nested_concat(all_inputs, inputs_decode, padding_index=-100)
-                        )
-                    if labels_host is not None:
-                        labels = nested_numpify(labels_host)
-                        all_labels = (
-                            labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
-                        )
-
-                    # Set back to None to begin a new accumulation
-                    losses_host, preds_host, inputs_host, labels_host = None, None, None, None
-        elif args.profile:
+            # Prediction step
+            tic = time.time()
+            inputs = {i : inputs[i].to(args.device) 
+                    if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+            with self.context_func(args.profile if step == profile_len else False, args.device, fuser_mode) as prof:
+                loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             if args.device == "cuda":
-                profile_act = [torch.profiler.ProfilerActivity.CPU, torch.profiler.ProfilerActivity.CUDA]
-            else:
-                profile_act = [torch.profiler.ProfilerActivity.CPU]
-            with torch.profiler.profile(
-                activities=profile_act,
-                record_shapes=True,
-                schedule=torch.profiler.schedule(
-                    wait=profile_len,
-                    warmup=2,
-                    active=1,
-                ),
-                on_trace_ready=self.trace_handler,
-            ) as p:
-                for step, inputs in enumerate(dataloader):
-                    if self.args.num_iters > 0 and step >= self.args.num_iters:
-                        break
-                    # Update the observed num examples
-                    observed_batch_size = find_batch_size(inputs)
-                    if observed_batch_size is not None:
-                        observed_num_examples += observed_batch_size
-                        # For batch samplers, batch_size is not known by the dataloader in advance.
-                        if batch_size is None:
-                            batch_size = observed_batch_size
+                torch.cuda.synchronize()
+            elif args.device == "xpu":
+                torch.xpu.synchronize()
+            toc = time.time()
+            inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
-                    # Prediction step
-                    tic = time.time()
-                    inputs = {i : inputs[i].to(args.device) 
-                            if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
-                    with torch.jit.fuser(fuser_mode):
-                        loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-                    if args.device == "cuda":
-                        torch.cuda.synchronize()
-                    toc = time.time()
-                    p.step()
-                    inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
+            print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
+            if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
+                print("the iteration-{} has been calcute perf".format(step))
+                total_time += toc - tic
+                total_data += batch_size
+            if args.profile and step == profile_len:
+                import pathlib
+                timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
+                if not os.path.exists(timeline_dir):
+                    try:
+                        os.makedirs(timeline_dir)
+                    except:
+                        pass
+                torch.save(prof.key_averages().table(sort_by="self_xpu_time_total"),
+                    timeline_dir+'profile.pt')
+                torch.save(prof.key_averages(group_by_input_shape=True).table(),
+                    timeline_dir+'profile_detail.pt')
+                #torch.save(prof.table(sort_by="id", row_limit=100000),
+                #    timeline_dir+'profile_detail_withId.pt')
+                #prof.export_chrome_trace(timeline_dir+"trace.json")
 
-                    print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                    if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
-                        print("the iteration-{} has been calcute perf".format(step))
-                        total_time += toc - tic
-                        total_data += batch_size
+            if is_torch_tpu_available():
+                xm.mark_step()
 
-                    if is_torch_tpu_available():
-                        xm.mark_step()
+            # Update containers on host
+            if loss is not None:
+                losses = self._nested_gather(loss.repeat(batch_size))
+                losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
+            if labels is not None:
+                labels = self._pad_across_processes(labels)
+                labels = self._nested_gather(labels)
+                labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
+            if inputs_decode is not None:
+                inputs_decode = self._pad_across_processes(inputs_decode)
+                inputs_decode = self._nested_gather(inputs_decode)
+                inputs_host = (
+                    inputs_decode
+                    if inputs_host is None
+                    else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                )
+            if logits is not None:
+                logits = self._pad_across_processes(logits)
+                logits = self._nested_gather(logits)
+                if self.preprocess_logits_for_metrics is not None:
+                    logits = self.preprocess_logits_for_metrics(logits, labels)
+                preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
+            self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
 
-                    # Update containers on host
-                    if loss is not None:
-                        losses = self._nested_gather(loss.repeat(batch_size))
-                        losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
-                    if labels is not None:
-                        labels = self._pad_across_processes(labels)
-                        labels = self._nested_gather(labels)
-                        labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
-                    if inputs_decode is not None:
-                        inputs_decode = self._pad_across_processes(inputs_decode)
-                        inputs_decode = self._nested_gather(inputs_decode)
-                        inputs_host = (
-                            inputs_decode
-                            if inputs_host is None
-                            else nested_concat(inputs_host, inputs_decode, padding_index=-100)
-                        )
-                    if logits is not None:
-                        logits = self._pad_across_processes(logits)
-                        logits = self._nested_gather(logits)
-                        if self.preprocess_logits_for_metrics is not None:
-                            logits = self.preprocess_logits_for_metrics(logits, labels)
-                        preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
-                    self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
-
-                    # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-                    if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
-                        if losses_host is not None:
-                            losses = nested_numpify(losses_host)
-                            all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
-                        if preds_host is not None:
-                            logits = nested_numpify(preds_host)
-                            all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-                        if inputs_host is not None:
-                            inputs_decode = nested_numpify(inputs_host)
-                            all_inputs = (
-                                inputs_decode
-                                if all_inputs is None
-                                else nested_concat(all_inputs, inputs_decode, padding_index=-100)
-                            )
-                        if labels_host is not None:
-                            labels = nested_numpify(labels_host)
-                            all_labels = (
-                                labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
-                            )
-
-                        # Set back to None to begin a new accumulation
-                        losses_host, preds_host, inputs_host, labels_host = None, None, None, None
-        else:
-            if args.device == "cuda":
-                context_func = torch.jit.fuser
-            else:
-                import contextlib
-                context_func = contextlib.nullcontext
-                fuser_mode = None
-
-            for step, inputs in enumerate(dataloader):
-                if self.args.num_iters > 0 and step >= self.args.num_iters:
-                    break
-                # Update the observed num examples
-                observed_batch_size = find_batch_size(inputs)
-                if observed_batch_size is not None:
-                    observed_num_examples += observed_batch_size
-                    # For batch samplers, batch_size is not known by the dataloader in advance.
-                    if batch_size is None:
-                        batch_size = observed_batch_size
-                print("--------input shape---------")
-                for i in inputs:
-                    print("label:{}, shape:{}".format(i, inputs[i].shape), flush=True)
-
-                # Prediction step
-                tic = time.time()
-                inputs = {i : inputs[i].to(args.device) 
-                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
-                with context_func(fuser_mode):
-                    loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
-                if args.device == "cuda":
-                    torch.cuda.synchronize()
-                elif args.device == "xpu":
-                    torch.xpu.synchronize()
-                toc = time.time()
-                inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
-
-                print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
-                if step >= self.args.num_warmup and step < min(len(dataloader), args.num_iters) - 1:
-                    print("the iteration-{} has been calcute perf".format(step))
-                    total_time += toc - tic
-                    total_data += batch_size
-
-                if is_torch_tpu_available():
-                    xm.mark_step()
-
-                # Update containers on host
-                if loss is not None:
-                    losses = self._nested_gather(loss.repeat(batch_size))
-                    losses_host = losses if losses_host is None else torch.cat((losses_host, losses), dim=0)
-                if labels is not None:
-                    labels = self._pad_across_processes(labels)
-                    labels = self._nested_gather(labels)
-                    labels_host = labels if labels_host is None else nested_concat(labels_host, labels, padding_index=-100)
-                if inputs_decode is not None:
-                    inputs_decode = self._pad_across_processes(inputs_decode)
-                    inputs_decode = self._nested_gather(inputs_decode)
-                    inputs_host = (
+            # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
+            if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
+                if losses_host is not None:
+                    losses = nested_numpify(losses_host)
+                    all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
+                if preds_host is not None:
+                    logits = nested_numpify(preds_host)
+                    all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
+                if inputs_host is not None:
+                    inputs_decode = nested_numpify(inputs_host)
+                    all_inputs = (
                         inputs_decode
-                        if inputs_host is None
-                        else nested_concat(inputs_host, inputs_decode, padding_index=-100)
+                        if all_inputs is None
+                        else nested_concat(all_inputs, inputs_decode, padding_index=-100)
                     )
-                if logits is not None:
-                    logits = self._pad_across_processes(logits)
-                    logits = self._nested_gather(logits)
-                    if self.preprocess_logits_for_metrics is not None:
-                        logits = self.preprocess_logits_for_metrics(logits, labels)
-                    preds_host = logits if preds_host is None else nested_concat(preds_host, logits, padding_index=-100)
-                self.control = self.callback_handler.on_prediction_step(args, self.state, self.control)
+                if labels_host is not None:
+                    labels = nested_numpify(labels_host)
+                    all_labels = (
+                        labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
+                    )
 
-                # Gather all tensors and put them back on the CPU if we have done enough accumulation steps.
-                if args.eval_accumulation_steps is not None and (step + 1) % args.eval_accumulation_steps == 0:
-                    if losses_host is not None:
-                        losses = nested_numpify(losses_host)
-                        all_losses = losses if all_losses is None else np.concatenate((all_losses, losses), axis=0)
-                    if preds_host is not None:
-                        logits = nested_numpify(preds_host)
-                        all_preds = logits if all_preds is None else nested_concat(all_preds, logits, padding_index=-100)
-                    if inputs_host is not None:
-                        inputs_decode = nested_numpify(inputs_host)
-                        all_inputs = (
-                            inputs_decode
-                            if all_inputs is None
-                            else nested_concat(all_inputs, inputs_decode, padding_index=-100)
-                        )
-                    if labels_host is not None:
-                        labels = nested_numpify(labels_host)
-                        all_labels = (
-                            labels if all_labels is None else nested_concat(all_labels, labels, padding_index=-100)
-                        )
-
-                    # Set back to None to begin a new accumulation
-                    losses_host, preds_host, inputs_host, labels_host = None, None, None, None
+                # Set back to None to begin a new accumulation
+                losses_host, preds_host, inputs_host, labels_host = None, None, None, None
 
         print("inference Latency: {} ms".format(total_time /total_data))
         print("inference Throughput: {} samples/s".format(total_data / total_time))
