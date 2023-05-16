@@ -1753,9 +1753,9 @@ class Trainer:
             for step, inputs in enumerate(epoch_iterator):
                 if step >= self.args.num_iters - 1:
                     self.control.should_training_stop = True
-                print("--------input shape---------")
+                print("--------input shape---------", flush=True)
                 for i in inputs:
-                    print("label:{}, shape:{}".format(i, inputs[i].shape))
+                    print("label:{}, shape:{}".format(i, inputs[i].shape), flush=True)
 
                 # Skip past any already trained steps if resuming training
                 if steps_trained_in_current_epoch > 0:
@@ -1882,7 +1882,7 @@ class Trainer:
                     if step >= self.args.num_warmup:
                         total_time += end_time - start_time
                         total_count += 1
-                    print("iteration:{}, training time: {} sec.".format(step, end_time - start_time), flush=True)
+                    print("Iteration: {}, training time: {} sec.".format(step, end_time - start_time), flush=True)
 
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
