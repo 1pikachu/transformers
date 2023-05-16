@@ -1882,7 +1882,7 @@ class Trainer:
                     if step >= self.args.num_warmup:
                         total_time += end_time - start_time
                         total_count += 1
-                    print("iteration:{}, training time: {} sec.".format(step, end_time - start_time))
+                    print("iteration:{}, training time: {} sec.".format(step, end_time - start_time), flush=True)
 
                     self.state.global_step += 1
                     self.state.epoch = epoch + (step + 1) / steps_in_epoch
