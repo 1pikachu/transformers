@@ -1874,7 +1874,7 @@ class Trainer:
                                 pass
                         torch.save(prof.key_averages().table(sort_by="self_{}_time_total".format(args.device)),
                             timeline_dir+'profile.pt')
-                        torch.save(prof.key_averages(group_by_input_shape=True).table(),
+                        torch.save(prof.key_averages(group_by_input_shape=True).table(row_limit=100000),
                             timeline_dir+'profile_detail.pt')
                         #torch.save(prof.table(sort_by="id", row_limit=100000),
                         #    timeline_dir+'profile_detail_withId.pt')
