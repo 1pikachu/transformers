@@ -50,7 +50,7 @@ from transformers.utils import send_example_telemetry
 from transformers.utils.versions import require_version
 
 sys.path.append(os.getcwd())
-from hooks import ExampleHook
+from hooks import ExampleHook, repeat_dataset
 
 
 logger = logging.getLogger(__name__)
@@ -442,11 +442,12 @@ def main():
         # https://huggingface.co/docs/transformers/main/en/main_classes/model#transformers.TFPreTrainedModel.prepare_tf_dataset
         # https://huggingface.co/docs/datasets/main/en/package_reference/main_classes#datasets.Dataset.to_tf_dataset
 
+        train_dataset = repeat_dataset(train_dataset, training_args.per_device_train_batch_size, training_args.num_iter)
         tf_train_dataset = model.prepare_tf_dataset(
             train_dataset,
             collate_fn=collate_fn,
             batch_size=total_train_batch_size,
-            shuffle=True,
+            shuffle=False,
         ).with_options(dataset_options)
         total_eval_batch_size = training_args.per_device_eval_batch_size * num_replicas
         tf_eval_dataset = model.prepare_tf_dataset(

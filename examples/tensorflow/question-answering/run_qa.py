@@ -49,13 +49,12 @@ from transformers import (
 from transformers.utils import CONFIG_NAME, TF2_WEIGHTS_NAME, check_min_version, send_example_telemetry
 
 sys.path.append(os.getcwd())
-from hooks import ExampleHook
+from hooks import ExampleHook, repeat_dataset
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
 check_min_version("4.28.0")
 
 logger = logging.getLogger(__name__)
-
 
 # region Arguments
 @dataclass
@@ -489,6 +488,8 @@ def main():
         # Number of samples might increase during Feature Creation, We select only specified max samples
         max_train_samples = min(len(train_dataset), data_args.max_train_samples)
         train_dataset = train_dataset.select(range(max_train_samples))
+
+    train_dataset = repeat_dataset(train_dataset, training_args.per_device_train_batch_size, training_args.num_iter)
     processed_datasets["train"] = train_dataset
 
     # Validation preprocessing
@@ -635,7 +636,7 @@ def main():
 
         training_dataset = model.prepare_tf_dataset(
             processed_datasets["train"],
-            shuffle=True,
+            shuffle=False,
             batch_size=training_args.per_device_train_batch_size * num_replicas,
             tokenizer=tokenizer,
         )
