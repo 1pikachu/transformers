@@ -78,7 +78,7 @@ function generate_core {
 	fi
 	# remove jit, longformers fail with "ValueError: not enough values to unpack (expected 2, got 1)"
         printf " ${OOB_EXEC_HEADER} \
-	    python examples/${framework}/$(echo ${EXAMPLE_ARGS}) \
+	    python -u examples/${framework}/$(echo ${EXAMPLE_ARGS}) \
 		${perf_mode} --no_cuda --overwrite_output_dir --output_dir /tmp/tmp0 \
 	        --num_iters $num_iter --num_warmup $num_warmup \
 		--channels_last $channels_last --precision $precision \
