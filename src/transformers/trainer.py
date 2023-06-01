@@ -16,7 +16,6 @@
 The Trainer class, to easily train a 🤗 Transformers from scratch or finetune it on a new task.
 """
 
-import contextlib
 import functools
 import glob
 import inspect
@@ -34,7 +33,11 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 from tqdm.auto import tqdm
 
-
+try:
+    from .context_func import context_func
+except ModuleNotFoundError as e:
+    print("!!!pls check how to add context_func.py from launch_benchmark.sh")
+    sys.exit(0)
 # Integrations must be imported before ML frameworks:
 from .integrations import (  # isort: split
     default_hp_search_backend,
@@ -1750,6 +1753,7 @@ class Trainer:
             total_time = 0.0
             total_count = 0
             profile_len = self.args.num_iters // 2
+
             for step, inputs in enumerate(epoch_iterator):
                 if step >= self.args.num_iters - 1:
                     self.control.should_training_stop = True
@@ -1774,7 +1778,7 @@ class Trainer:
 
                 # calcute time
                 start_time = time.time()
-                with self.context_func(self.args.profile if step == profile_len else False, self.args.device, "none") as prof:
+                with context_func(self.args.profile if step == profile_len else False, self.args.device, "none", step == profile_len) as prof:
                     if (
                         ((step + 1) % args.gradient_accumulation_steps != 0)
                         and args.local_rank != -1
@@ -1864,21 +1868,6 @@ class Trainer:
                     # calcute time
                     end_time = time.time()
 
-                    if self.args.profile and step == profile_len:
-                        import pathlib
-                        timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
-                        if not os.path.exists(timeline_dir):
-                            try:
-                                os.makedirs(timeline_dir)
-                            except:
-                                pass
-                        torch.save(prof.key_averages().table(sort_by="self_{}_time_total".format(args.device)),
-                            timeline_dir+'profile.pt')
-                        torch.save(prof.key_averages(group_by_input_shape=True).table(row_limit=100000),
-                            timeline_dir+'profile_detail.pt')
-                        #torch.save(prof.table(sort_by="id", row_limit=100000),
-                        #    timeline_dir+'profile_detail_withId.pt')
-                        #prof.export_chrome_trace(timeline_dir+"trace.json")
                     if step >= self.args.num_warmup:
                         total_time += end_time - start_time
                         total_count += 1
@@ -2983,29 +2972,6 @@ class Trainer:
 
         return PredictionOutput(predictions=output.predictions, label_ids=output.label_ids, metrics=output.metrics)
 
-    @contextlib.contextmanager
-    def context_func(self, profiling_enabled, device, fuser_mode):
-        if profiling_enabled and device == "xpu":
-            with (torch.autograd.profiler_legacy.profile(enabled=profiling_enabled, use_xpu=True, record_shapes=False)) as prof:
-                yield prof
-        elif profiling_enabled and device == "cuda":
-            with torch.jit.fuser(fuser_mode):
-                with torch.profiler.profile(
-                    activities=[
-                        torch.profiler.ProfilerActivity.CPU,
-                        torch.profiler.ProfilerActivity.CUDA],
-                    on_trace_ready=torch.profiler.tensorboard_trace_handler('./timeline', worker_name='worker0'),
-                    record_shapes=True,
-                    profile_memory=True,  # This will take 1 to 2 minutes. Setting it to False could greatly speedup.
-                    with_stack=True
-                ) as prof:
-                    yield prof
-        elif device == "cuda":
-            with torch.jit.fuser(fuser_mode):
-                yield
-        else:
-            with contextlib.nullcontext(None):
-                yield
 
     def evaluation_loop(
         self,
@@ -3146,7 +3112,7 @@ class Trainer:
             tic = time.time()
             inputs = {i : inputs[i].to(args.device) 
                     if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
-            with self.context_func(args.profile if step == profile_len else False, args.device, fuser_mode) as prof:
+            with context_func(args.profile if step == profile_len else False, args.device, fuser_mode, step == profile_len) as prof:
                 loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             if args.device == "cuda":
                 torch.cuda.synchronize()
@@ -3160,21 +3126,6 @@ class Trainer:
                 print("the iteration-{} has been calcute perf".format(step))
                 total_time += toc - tic
                 total_data += batch_size
-            if args.profile and step == profile_len:
-                import pathlib
-                timeline_dir = str(pathlib.Path.cwd()) + '/timeline/'
-                if not os.path.exists(timeline_dir):
-                    try:
-                        os.makedirs(timeline_dir)
-                    except:
-                        pass
-                torch.save(prof.key_averages().table(sort_by="self_{}_time_total".format(self.args.device)),
-                    timeline_dir+'profile.pt')
-                torch.save(prof.key_averages(group_by_input_shape=True).table(),
-                    timeline_dir+'profile_detail.pt')
-                #torch.save(prof.table(sort_by="id", row_limit=100000),
-                #    timeline_dir+'profile_detail_withId.pt')
-                #prof.export_chrome_trace(timeline_dir+"trace.json")
 
             if is_torch_tpu_available():
                 xm.mark_step()

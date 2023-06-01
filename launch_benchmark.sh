@@ -14,6 +14,8 @@ function main {
     python setup.py develop
     export WANDB_DISABLED=True
 
+    cp oob-common/context_func.py src/transformers/. 
+
     # if multiple use 'xxx,xxx,xxx'
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))
     batch_size_list=($(echo "${batch_size}" |sed 's/,/ /g'))
