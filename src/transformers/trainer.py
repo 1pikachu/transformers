@@ -1779,7 +1779,7 @@ class Trainer:
 
                 # calcute time
                 start_time = time.time()
-                with context_func(self.args.profile if step == profile_len else False, self.args.device, "none", step == profile_len) as prof:
+                with context_func(self.args.profile if step == profile_len else False, self.args.device, "none") as prof:
                     if (
                         ((step + 1) % args.gradient_accumulation_steps != 0)
                         and args.local_rank != -1
@@ -3113,7 +3113,7 @@ class Trainer:
             tic = time.time()
             inputs = {i : inputs[i].to(args.device) 
                     if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
-            with context_func(args.profile if step == profile_len else False, args.device, fuser_mode, step == profile_len) as prof:
+            with context_func(args.profile if step == profile_len else False, args.device, fuser_mode) as prof:
                 loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
             if args.device == "cuda":
                 torch.cuda.synchronize()
