@@ -656,8 +656,8 @@ def main():
                     steps=training_args.num_iter,
                     batch_size=training_args.per_device_eval_batch_size,
                 )
-            else:
-                eval_predictions = model.predict(tf_eval_dataset, steps=math.ceil(training_args.num_iter/10), batch_size=1)
+            #else:
+            #    eval_predictions = model.predict(tf_eval_dataset, steps=math.ceil(training_args.num_iter/10), batch_size=1)
             elapsed = time.time()
             eval_predictions = model.predict(
                 tf_eval_dataset,

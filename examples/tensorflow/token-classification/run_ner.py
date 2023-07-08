@@ -589,12 +589,12 @@ def main():
                 # warmup
                 if training_args.warmup_for_dynamicShape:
                     predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter)["logits"]
-                else:
-                    predictions = model.predict(
-                        tf_eval_dataset,
-                        batch_size=1,
-                        steps=math.ceil(training_args.num_iter/10)
-                    )["logits"]
+                #else:
+                #    predictions = model.predict(
+                #        tf_eval_dataset,
+                #        batch_size=1,
+                #        steps=math.ceil(training_args.num_iter/10)
+                #    )["logits"]
                 elapsed = time.time()
                 predictions = model.predict(tf_eval_dataset, batch_size=training_args.per_device_eval_batch_size, steps=training_args.num_iter, callbacks=[keras_hook])["logits"]
                 elapsed = time.time() - elapsed
