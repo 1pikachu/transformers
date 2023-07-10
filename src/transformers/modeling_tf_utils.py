@@ -66,16 +66,16 @@ from .utils import (
 from .utils.hub import convert_file_size_to_int, get_checkpoint_shard_files
 
 
-if parse(tf.__version__) >= parse("2.11.0"):
-    from keras import backend as K
-    from keras.engine import data_adapter
-    from keras.engine.keras_tensor import KerasTensor
-    from keras.saving.legacy import hdf5_format
-else:
-    from tensorflow.python.keras import backend as K
-    from tensorflow.python.keras.engine import data_adapter
-    from tensorflow.python.keras.engine.keras_tensor import KerasTensor
-    from tensorflow.python.keras.saving import hdf5_format
+#if parse(tf.__version__) >= parse("2.11.0"):
+#    from keras import backend as K
+#    from keras.engine import data_adapter
+#    from keras.engine.keras_tensor import KerasTensor
+#    from keras.saving.legacy import hdf5_format
+#else:
+from tensorflow.python.keras import backend as K
+from tensorflow.python.keras.engine import data_adapter
+from tensorflow.python.keras.engine.keras_tensor import KerasTensor
+from tensorflow.python.keras.saving import hdf5_format
 
 
 if is_safetensors_available():
