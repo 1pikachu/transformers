@@ -6,3 +6,4 @@ seqeval
 jiwer==3.0.1
 sacrebleu
 fsspec==2023.9.2
+protobuf==3.19.0
