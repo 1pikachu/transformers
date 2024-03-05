@@ -10,9 +10,10 @@ function main {
 
     # requirements
     pip install -r requirements.txt
-    pip uninstall tokenizers transformers apex -y
+    pip uninstall tokenizers transformers huggingface_hub apex -y
     python setup.py develop
     export WANDB_DISABLED=True
+    pip install datasets==2.18.0
 
     cp oob-common/context_func.py src/transformers/. 
 
