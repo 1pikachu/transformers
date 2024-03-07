@@ -15,7 +15,7 @@ function main {
     export WANDB_DISABLED=True
     pip install datasets==2.18.0
 
-    if [[ "${EXAMPLE_ARGS}" =~ "image-classification" && "${model_name}" == "train" ]];then
+    if [[ "${EXAMPLE_ARGS}" =~ "image-classification" && "${mode_name}" == "train" ]];then
         pip install datasets==2.4.0
     fi
 
