@@ -15,6 +15,10 @@ function main {
     export WANDB_DISABLED=True
     pip install datasets==2.18.0
 
+    if [[ "${EXAMPLE_ARGS}" =~ "image-classification" && "${model_name}" == "train" ]];then
+        pip install datasets==2.4.0
+    fi
+
     cp oob-common/context_func.py src/transformers/. 
 
     # if multiple use 'xxx,xxx,xxx'
