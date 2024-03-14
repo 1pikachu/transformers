@@ -1755,7 +1755,10 @@ class Trainer:
             total_count = 0
             profile_len = self.args.num_iters // 2
 
-            for step, inputs in enumerate(epoch_iterator):
+            for _, inputs_bak in enumerate(epoch_iterator):
+                break
+            for step in range(self.args.num_iters+1):
+                inputs = inputs_bak
                 if step >= self.args.num_iters - 1:
                     self.control.should_training_stop = True
                 print("--------input shape---------", flush=True)
