@@ -63,6 +63,8 @@ function generate_core {
             OOB_EXEC_HEADER+=" -C $(echo ${device_array[i]} |awk -F ';' '{print $1}') "
         elif [ "${device}" == "cuda" ];then
             OOB_EXEC_HEADER=" CUDA_VISIBLE_DEVICES=${device_array[i]} "
+        elif [ "${device}" == "xpu" ];then
+	        OOB_EXEC_HEADER=" ZE_AFFINITY_MASK=${i} "
         fi
 	OOB_EXEC_HEADER+=" ${OOB_EXTRA_HEADER} "
         printf " ${OOB_EXEC_HEADER} \
