@@ -541,6 +541,13 @@ class TrainingArguments:
         default="cpu",
         metadata={"help": "cpu, cuda, xpu"}
     )
+    compile: bool = field(
+        default=False, metadata={"help": "compile"}
+    )
+    backend: str = field(
+        default="inductor",
+        metadata={"help": "compiler mode"}
+    )
 
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
     do_eval: bool = field(default=False, metadata={"help": "Whether to run eval on the dev set."})

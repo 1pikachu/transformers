@@ -1722,6 +1722,9 @@ class Trainer:
         if self.args.device == "xpu":
             model, self.optimizer = torch.xpu.optimize(model=model, optimizer=self.optimizer, dtype=self.args.datatype)
             print("---- xpu optimize")
+        if self.args.compile:
+            print("----enable compiler")
+            model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
         num_train_epochs = epochs_trained + 1
 
         for epoch in range(epochs_trained, num_train_epochs):
@@ -3032,6 +3035,9 @@ class Trainer:
         if self.args.device == "xpu":
             datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
             model = torch.xpu.optimize(model=model, dtype=datatype)
+        if self.args.compile:
+            print("----enable compiler")
+            model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
         if self.args.channels_last and self.args.device != "xpu":
             try:
                 model = model.to(memory_format=torch.channels_last)
