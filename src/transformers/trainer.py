@@ -3035,15 +3035,15 @@ class Trainer:
         if self.args.device == "xpu":
             datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
             model = torch.xpu.optimize(model=model, dtype=datatype)
-        if self.args.compile:
-            print("----enable compiler")
-            model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
         if self.args.channels_last and self.args.device != "xpu":
             try:
                 model = model.to(memory_format=torch.channels_last)
                 print("---- Use NHWC model")
             except:
                 print("---- Use normal model")
+        if self.args.compile:
+            print("----enable compiler")
+            model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
         if self.args.nv_fuser:
             print("---- Use trace model.")
             fuser_mode = "fuser2"
