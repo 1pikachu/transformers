@@ -18,6 +18,7 @@ function main {
     if [[ "${EXAMPLE_ARGS}" =~ "image-classification" && "${mode_name}" == "train" ]];then
         pip install datasets==2.4.0
     fi
+    pip install opencv-python==4.8.0.74
 
     cp oob-common/context_func.py src/transformers/. 
 
