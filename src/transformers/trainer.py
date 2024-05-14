@@ -3107,6 +3107,11 @@ class Trainer:
         for step, inputs in enumerate(dataloader):
             if self.args.num_iters > 0 and step >= self.args.num_iters:
                 break
+            if self.args.fixInputShape:
+                if step == 0:
+                    fixed_inputs = inputs
+                else:
+                    inputs = fixed_inputs
             # Update the observed num examples
             observed_batch_size = find_batch_size(inputs)
             if observed_batch_size is not None:

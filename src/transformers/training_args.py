@@ -548,6 +548,9 @@ class TrainingArguments:
         default="inductor",
         metadata={"help": "compiler mode"}
     )
+    fixInputShape: bool = field(
+        default=False, metadata={"help": "fix input shape"}
+    )
 
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
     do_eval: bool = field(default=False, metadata={"help": "Whether to run eval on the dev set."})
