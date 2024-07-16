@@ -3195,7 +3195,7 @@ class Trainer:
                 # Set back to None to begin a new accumulation
                 losses_host, preds_host, inputs_host, labels_host = None, None, None, None
 
-        print("inference Latency: {} ms".format(total_time /total_data))
+        print("inference Latency: {} s".format(total_time /total_data))
         print("inference Throughput: {} samples/s".format(total_data / total_time))
         print("Device: {}".format(self.args.device))
 
