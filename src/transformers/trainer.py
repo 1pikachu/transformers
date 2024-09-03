@@ -1787,7 +1787,7 @@ class Trainer:
 
                 # calcute time
                 start_time = time.time()
-                with context_func(True if self.args.profile and step == profile_len else False, self.args.device, fuser_mode, schedule_disable="yes") as prof:
+                with context_func(True if self.args.profile and step == profile_len else False, self.args.device, "none", schedule_disable="yes") as prof:
                     if (
                         ((step + 1) % args.gradient_accumulation_steps != 0)
                         and args.local_rank != -1
