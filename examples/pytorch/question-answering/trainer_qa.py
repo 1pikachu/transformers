@@ -18,7 +18,7 @@ A subclass of `Trainer` specific to Question-Answering tasks
 
 from transformers import Trainer, is_torch_tpu_available
 from transformers.trainer_utils import PredictionOutput
-
+import torch
 
 if is_torch_tpu_available(check_device=False):
     import torch_xla.core.xla_model as xm
@@ -41,14 +41,25 @@ class QuestionAnsweringTrainer(Trainer):
         self.compute_metrics = None
         eval_loop = self.prediction_loop if self.args.use_legacy_prediction_loop else self.evaluation_loop
         try:
-            output = eval_loop(
-                eval_dataloader,
-                description="Evaluation",
-                # No point gathering the predictions if there are no metrics, otherwise we defer to
-                # self.args.prediction_loss_only
-                prediction_loss_only=True if compute_metrics is None else None,
-                ignore_keys=ignore_keys,
-            )
+            with torch.no_grad():
+                amp_enable = True
+                if self.args.precision == "float16":
+                    data_dtype = torch.float16
+                elif self.args.precision == "bfloat16":
+                    data_dtype = torch.bfloat16
+                else:
+                    data_dtype = torch.float32
+                    amp_enable = False
+                print("---- Use autocast {} {}".format(self.args.precision, self.args.device))
+                with torch.autocast(device_type=self.args.device, enabled=amp_enable, dtype=data_dtype):
+                    output = eval_loop(
+                        eval_dataloader,
+                        description="Evaluation",
+                        # No point gathering the predictions if there are no metrics, otherwise we defer to
+                        # self.args.prediction_loss_only
+                        prediction_loss_only=True if compute_metrics is None else None,
+                        ignore_keys=ignore_keys,
+                    )
         finally:
             self.compute_metrics = compute_metrics
 

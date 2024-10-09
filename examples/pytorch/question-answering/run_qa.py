@@ -46,7 +46,6 @@ from transformers.trainer_utils import get_last_checkpoint
 from transformers.utils import check_min_version, send_example_telemetry
 from transformers.utils.versions import require_version
 from utils_qa import postprocess_qa_predictions
-import torch
 
 
 # Will error if the minimal version of Transformers is not installed. Remove at your own risks.
@@ -328,12 +327,6 @@ def main():
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
     )
-    
-    torch_dtype = torch.float32
-    if training_args.precision == 'float16':
-        torch_dtype = torch.float16
-    elif training_args.precision == 'bfloat16':
-        torch_dtype = torch.bfloat16
 
     model = AutoModelForQuestionAnswering.from_pretrained(
         model_args.model_name_or_path,
@@ -342,7 +335,6 @@ def main():
         cache_dir=model_args.cache_dir,
         revision=model_args.model_revision,
         use_auth_token=True if model_args.use_auth_token else None,
-        torch_dtype=torch_dtype
     )
 
     # Tokenizer check: this script requires a fast tokenizer.
