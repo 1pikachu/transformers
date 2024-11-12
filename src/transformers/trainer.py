@@ -1721,9 +1721,14 @@ class Trainer:
         # OOB
         model.train()
         self.args.datatype = torch.float16 if self.args.precision == "float16" else torch.bfloat16 if self.args.precision == "bfloat16" else torch.float32
-        if self.args.device == "xpu":
+        if self.args.device == "xpu" and self.args.ipex:
             model, self.optimizer = torch.xpu.optimize(model=model, optimizer=self.optimizer, dtype=self.args.datatype)
             print("---- xpu optimize")
+        if self.args.xpu_fallback:
+            os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
+            print("PYTORCH_ENABLE_XPU_FALLBACK", os.environ["PYTORCH_ENABLE_XPU_FALLBACK"])
+            print("---- Enable fallback")
+        
         if self.args.compile:
             print("----enable compiler")
             model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
@@ -3034,7 +3039,7 @@ class Trainer:
 
         model.eval()
         model = model.to(self.args.device)
-        if self.args.device == "xpu":
+        if self.args.device == "xpu" and self.args.ipex:
             datatype = torch.float16 if args.precision == "float16" else torch.bfloat16 if args.precision == "bfloat16" else torch.float
             model = torch.xpu.optimize(model=model, dtype=datatype)
         if self.args.channels_last and self.args.device != "xpu":
@@ -3043,6 +3048,10 @@ class Trainer:
                 print("---- Use NHWC model")
             except:
                 print("---- Use normal model")
+        if self.args.xpu_fallback:
+            os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
+            print("PYTORCH_ENABLE_XPU_FALLBACK", os.environ["PYTORCH_ENABLE_XPU_FALLBACK"])
+            print("---- Enable fallback")
         if self.args.compile:
             print("----enable compiler")
             model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
