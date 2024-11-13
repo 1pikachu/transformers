@@ -1724,10 +1724,6 @@ class Trainer:
         if self.args.device == "xpu" and self.args.ipex:
             model, self.optimizer = torch.xpu.optimize(model=model, optimizer=self.optimizer, dtype=self.args.datatype)
             print("---- xpu optimize")
-        if self.args.xpu_fallback:
-            os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
-            print("PYTORCH_ENABLE_XPU_FALLBACK", os.environ["PYTORCH_ENABLE_XPU_FALLBACK"])
-            print("---- Enable fallback")
         
         if self.args.compile:
             print("----enable compiler")
@@ -3048,10 +3044,7 @@ class Trainer:
                 print("---- Use NHWC model")
             except:
                 print("---- Use normal model")
-        if self.args.xpu_fallback:
-            os.environ["PYTORCH_ENABLE_XPU_FALLBACK"] = "1"
-            print("PYTORCH_ENABLE_XPU_FALLBACK", os.environ["PYTORCH_ENABLE_XPU_FALLBACK"])
-            print("---- Enable fallback")
+        
         if self.args.compile:
             print("----enable compiler")
             model = torch.compile(model, backend=self.args.backend, options={"freezing": True})
