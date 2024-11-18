@@ -551,6 +551,10 @@ class TrainingArguments:
     fixInputShape: bool = field(
         default=False, metadata={"help": "fix input shape"}
     )
+    ipex: bool = field(
+        default=False, metadata={"help": "use ipex"}
+    )
+
 
     do_train: bool = field(default=False, metadata={"help": "Whether to run training."})
     do_eval: bool = field(default=False, metadata={"help": "Whether to run eval on the dev set."})

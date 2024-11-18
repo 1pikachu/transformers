@@ -318,8 +318,9 @@ class Trainer:
         self.args = args
         self.args.device = args.device
 
-        if self.args.device == "xpu":
+        if self.args.device == "xpu" and self.args.ipex:
             import intel_extension_for_pytorch
+            print("Use IPEX")
         elif self.args.device == "cuda":
             torch.backends.cuda.matmul.allow_tf32 = False
 
