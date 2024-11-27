@@ -2580,11 +2580,11 @@ class Trainer:
             return loss_mb.reduce_mean().detach().to(self.args.device)
 
         if self.args.device == "xpu":
-            with torch.xpu.amp.autocast(enabled=True, dtype=self.args.datatype):
+            with torch.autocast(enabled=True, dtype=self.args.datatype):
                 with self.compute_loss_context_manager():
                     loss = self.compute_loss(model, inputs)
         elif self.args.device == "cuda":
-            with torch.cuda.amp.autocast(enabled=True, dtype=self.args.datatype):
+            with torch.autocast(enabled=True, dtype=self.args.datatype):
                 with self.compute_loss_context_manager():
                     loss = self.compute_loss(model, inputs)
         else:
