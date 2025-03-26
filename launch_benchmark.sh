@@ -11,7 +11,7 @@ function main {
     # requirements
     pip install -r requirements.txt
     pip uninstall tokenizers transformers huggingface_hub apex -y
-    python setup.py develop
+    python setup.py install
     export WANDB_DISABLED=True
     pip install datasets==2.18.0
 
@@ -20,7 +20,7 @@ function main {
     fi
     pip install opencv-python==4.8.0.74
 
-    cp oob-common/context_func.py src/transformers/. 
+    cp oob-common/context_func.py .
 
     # if multiple use 'xxx,xxx,xxx'
     model_name_list=($(echo "${model_name}" |sed 's/,/ /g'))

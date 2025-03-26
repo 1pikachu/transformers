@@ -34,8 +34,7 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple, Un
 
 from tqdm.auto import tqdm
 
-sys.path.append(os.path.dirname(os.path.realpath(__file__)))
-#print("os.path.dirname(__file__):", os.path.dirname(__file__))
+sys.path.append(os.getcwd())
 try:
     from context_func import context_func
 except ModuleNotFoundError as e:
@@ -3129,16 +3128,16 @@ class Trainer:
                 print("label:{}, shape:{}".format(i, inputs[i].shape), flush=True)
 
             # Prediction step
-            tic = time.time()
             with context_func(True if self.args.profile and step == profile_len else False, self.args.device, fuser_mode, schedule_disable="yes") as prof:
                 inputs = {i : inputs[i].to(args.device) 
                         if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+                tic = time.time()
                 loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                 if args.device == "cuda":
                     torch.cuda.synchronize()
                 elif args.device == "xpu":
                     torch.xpu.synchronize()
-            toc = time.time()
+                toc = time.time()
             inputs_decode = self._prepare_input(inputs["input_ids"]) if args.include_inputs_for_metrics else None
 
             print("Iteration: {}, inference time: {} sec, batch size: {}".format(step, toc - tic, batch_size), flush=True)
