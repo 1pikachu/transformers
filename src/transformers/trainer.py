@@ -3128,9 +3128,13 @@ class Trainer:
                 print("label:{}, shape:{}".format(i, inputs[i].shape), flush=True)
 
             # Prediction step
+            inputs = {i : inputs[i].to(args.device) 
+                    if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
+            if args.device == "cuda":
+                torch.cuda.synchronize()
+            elif args.device == "xpu":
+                torch.xpu.synchronize()
             with context_func(True if self.args.profile and step == profile_len else False, self.args.device, fuser_mode, schedule_disable="yes") as prof:
-                inputs = {i : inputs[i].to(args.device) 
-                        if type(inputs[i]) is torch.Tensor else inputs[i] for i in inputs}
                 tic = time.time()
                 loss, logits, labels = self.prediction_step(model, inputs, prediction_loss_only, ignore_keys=ignore_keys)
                 if args.device == "cuda":
